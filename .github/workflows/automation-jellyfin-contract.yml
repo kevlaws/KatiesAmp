@@ -11,11 +11,11 @@ permissions:
 jobs:
     contract:
         name: Jellyfin Contract
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04
         timeout-minutes: 15
         services:
             jellyfin:
-                image: jellyfin/jellyfin:latest
+                image: jellyfin/jellyfin:10.10.7
                 ports:
                     - 8096:8096
         steps:
@@ -26,6 +26,13 @@ jobs:
               uses: actions/setup-node@v6
               with:
                   node-version: 24
+
+            - name: Add generated music to the disposable server
+              shell: bash
+              run: |
+                  node scripts/automation/create-jellyfin-fixture.mjs
+                  docker exec --user 0 '${{ job.services.jellyfin.id }}' mkdir -p /media
+                  docker cp 'test-results/jellyfin/Automation Track.wav' '${{ job.services.jellyfin.id }}:/media/Automation Track.wav'
 
             - name: Wait for Jellyfin
               shell: bash
@@ -39,5 +46,5 @@ jobs:
                   echo 'Jellyfin did not become ready in time' >&2
                   exit 1
 
-            - name: Verify public API contract
+            - name: Verify authenticated music API contract
               run: node scripts/automation/verify-jellyfin-contract.mjs http://127.0.0.1:8096

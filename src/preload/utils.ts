@@ -195,6 +195,7 @@ const rendererUpdateDownloaded = (cb: (version: string) => void) => {
 };
 
 export const utils = {
+    automation: process.env.KATIESAMP_AUTOMATION === '1',
     cancelReadSongMetadata,
     checkForUpdates,
     customCssUpdatedListener,

@@ -138,6 +138,7 @@ export const OfflineDownloadManager = () => {
         <Popover position="top-end" withArrow>
             <Popover.Target>
                 <ActionIcon
+                    aria-label={t('offline.downloads', 'Downloads')}
                     icon="download"
                     iconProps={{ color: hasActiveTask ? 'primary' : undefined, size: 'lg' }}
                     onClick={(event) => event.stopPropagation()}

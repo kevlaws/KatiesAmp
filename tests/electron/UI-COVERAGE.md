@@ -7,11 +7,13 @@ The UI suite deliberately separates quick pull request confidence from slower be
 | Launch and sign-in | App identity, configured server form, successful login | Invalid credentials | - | Server loss and recovery, Quick Connect |
 | Home | Brand, support details, user, version, connected server | Narrow-window layout, music-folder selector, live permission refresh | - | Repeated resize stress, offline status transition |
 | Library | - | Albums, songs, and playlists load from Jellyfin | - | Large fixture library, search, sorting, filtering, metadata refresh |
-| Playback | - | Volume levelling defaults, profiles, persistence, and Web/MPV availability | Synthetic track starts and requests media | Pause, stop, seek, crossfade, perceptual loudness validation |
-| Queue | - | - | Foundation supplied by playback fixture | Manual insertion, skip removal, shuffle order, repeat-all refill |
-| Downloads | - | - | Offline download action is available | Progress, cancellation, retry, restoration, sync |
+| Playback | - | Volume levelling defaults, profiles, persistence, and Web/MPV availability | Synthetic playback plus measured Web Audio levelling, limiting, and crossfade output | Real MPV output measurement and perceptual loudness comparison |
+| Queue | - | - | Skip removal, later-track selection, visible shuffle order, repeat-off stop, and repeat-all or shuffled refill before track end | Exact drag position in the rendered virtual queue and crossfade plus refill in one scenario |
+| Downloads | - | - | Actions and icons, live progress, cancellation, retry, application restart restoration, playlist synchronization, and playback after server loss | Interrupted-download resume |
 | Product policy | - | Radio and playlist-creation entry points stay hidden | - | Native application-menu restrictions |
-| Packaging | - | Production build | Portable launch, NSIS install, installed launch, uninstall | Signed beta-to-beta update replacement |
+| Packaging and updates | - | Production build | Portable launch, NSIS install, installed launch, uninstall | Signed `electron-updater` transport and install against a temporary release feed |
+
+The release workflow also unit-tests beta and stable version resolution and verifies that the current Windows beta installer replaces the previous beta successfully. The weekly Jellyfin contract workflow uses a disposable Jellyfin 10.10.7 container and generated audio to check startup, authentication, permissions, music folders, albums, artists, search, playlists, and ranged playback.
 
 ## Test data rules
 
@@ -23,9 +25,8 @@ The UI suite deliberately separates quick pull request confidence from slower be
 
 ## Tracked follow-up gaps
 
-- Exercise the complete playback and queue lifecycle: repeat-off, shuffle order, played and skipped removal, exact drag insertion, repeat-all refill, and crossfade during refill.
-- Validate automatic volume levelling against measured Web and MPV audio output, including limiter and crossfade interactions.
-- Cover download progress, cancellation, retry, startup restoration, server sync, and playback after the server becomes unavailable.
-- Unit-test release version resolution and add a signed beta-to-beta updater replacement test.
-- Extend the disposable Jellyfin contract environment beyond public server information to authenticated folders, permissions, albums, artists, playlists, search, and playback endpoints.
-- Add true mobile-layout coverage, native application-menu policy checks, and reconcile documented Nightly scenarios with implemented tests.
+- Add a rendered exact-position drag test for the virtual queue. Queue insertion itself is covered by deterministic unit tests for top, bottom, multiple-item, stale-target, and search-result insertion.
+- Measure real MPV output on a runner with MPV available; current MPV coverage checks filter construction while live output measurement uses Web Audio.
+- Exercise a complete signed `electron-updater` beta-to-beta download and apply cycle. The release workflow currently verifies beta installer replacement without a live update feed.
+- Add interrupted-download resume coverage.
+- Add true mobile-layout coverage, repeated resize stress, a large fixture library, and native application-menu policy checks.
