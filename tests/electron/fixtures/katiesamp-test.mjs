@@ -14,6 +14,9 @@ const packageVersion = JSON.parse(
     readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
 ).version;
 
+const isExpectedMediaCancellation = (message) =>
+    message.startsWith('The play() request was interrupted by a new load request.');
+
 export const test = base.extend({
     electronApp: async ({ mockJellyfin, serverLock }, use) => {
         const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), 'katiesamp-ui-'));
@@ -82,6 +85,27 @@ export const test = base.extend({
             body: Buffer.from(JSON.stringify(mockJellyfin.state.requests, null, 2)),
             contentType: 'application/json',
         });
+
+        if (mockJellyfin.state.unexpectedRequests.length > 0) {
+            await testInfo.attach('unexpected-jellyfin-requests', {
+                body: Buffer.from(JSON.stringify(mockJellyfin.state.unexpectedRequests, null, 2)),
+                contentType: 'application/json',
+            });
+        }
+
+        const automationErrors = [
+            ...errors
+                .filter((message) => !isExpectedMediaCancellation(message))
+                .map((message) => `Renderer exception: ${message}`),
+            ...mockJellyfin.state.unexpectedRequests.map(
+                (request) =>
+                    `Unexpected Jellyfin request: ${request.method} ${request.pathname}${request.search}`,
+            ),
+        ];
+        expect(
+            automationErrors,
+            'Electron automation emitted errors that were not asserted by the test',
+        ).toEqual([]);
     },
     serverLock: ['true', { option: true }],
 });

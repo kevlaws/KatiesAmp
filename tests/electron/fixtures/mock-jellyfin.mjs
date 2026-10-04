@@ -189,6 +189,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             },
         ],
         requests: [],
+        unexpectedRequests: [],
     };
     const audio = makeWave();
 
@@ -394,6 +395,15 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
 
         if (
             request.method === 'GET' &&
+            pathname.startsWith('/audio/') &&
+            pathname.endsWith('/lyrics')
+        ) {
+            sendJson(response, 200, { Lyrics: [] });
+            return;
+        }
+
+        if (
+            request.method === 'GET' &&
             (pathname.includes('/audio/') || pathname.includes('/items/')) &&
             (pathname.includes('/stream') ||
                 pathname.includes('/universal') ||
@@ -418,7 +428,15 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             return;
         }
 
-        sendJson(response, 200, { Items: [], StartIndex: 0, TotalRecordCount: 0 });
+        const unexpectedRequest = {
+            method: request.method,
+            pathname: url.pathname,
+            search: url.search,
+        };
+        state.unexpectedRequests.push(unexpectedRequest);
+        sendJson(response, 501, {
+            error: `Unexpected mock Jellyfin request: ${request.method} ${url.pathname}${url.search}`,
+        });
     });
 
     await new Promise((resolve, reject) => {

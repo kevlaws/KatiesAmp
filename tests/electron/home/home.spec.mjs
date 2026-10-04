@@ -36,10 +36,11 @@ test('@full home exposes the configured music folder selector', async ({ page })
     await expect(page.getByRole('option', { name: "Katie O'Brien's Music" })).toBeVisible();
 });
 
-test('@full updates a removed music folder without expiring the login', async ({
+test('@full automatically updates a removed music folder without expiring the login', async ({
     mockJellyfin,
     page,
 }) => {
+    await page.clock.install();
     await login(page);
     const selector = page.getByRole('combobox', { name: 'Select music folder' });
     await expect(selector).toHaveValue("Katie O'Brien's Music");
@@ -52,7 +53,7 @@ test('@full updates a removed music folder without expiring the login', async ({
     await expect(page.getByText('Automation Track 1', { exact: true })).toBeVisible();
 
     mockJellyfin.setMusicFolders([{ id: 'music-folder-2', name: 'Replacement Music' }]);
-    await page.reload();
+    await page.clock.runFor('01:00');
     await expect(selector).toHaveValue('Replacement Music');
     await expect(page.getByText('Automation Track 1', { exact: true })).toHaveCount(0);
 
