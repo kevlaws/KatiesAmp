@@ -5,6 +5,8 @@ import { immer } from 'zustand/middleware/immer';
 import { shallow } from 'zustand/shallow';
 import { createWithEqualityFn } from 'zustand/traditional';
 
+import { KATIESAMP_DEFAULT_UI_SETTINGS } from '/@/renderer/store/default-ui-settings';
+
 export type FullScreenPlayerItemAlignment = 'center' | 'left' | 'right';
 
 export interface FullScreenPlayerSlice extends FullScreenPlayerState {
@@ -40,7 +42,7 @@ export const useFullScreenPlayerStore = createWithEqualityFn<FullScreenPlayerSli
                         set({ ...get(), ...data });
                     },
                 },
-                activeTab: '',
+                activeTab: KATIESAMP_DEFAULT_UI_SETTINGS.fullScreenPlayer.activeTab,
                 coverArtSize: 75,
                 dynamicBackground: true,
                 dynamicImageBlur: 6,

@@ -29,6 +29,7 @@ import {
 } from '/@/renderer/features/player/audio-player/utils/volume-leveling';
 import { audiomotionanalyzerPresets } from '/@/renderer/features/visualizer/components/audiomotionanalyzer/presets';
 import { AppRoute } from '/@/renderer/router/routes';
+import { KATIESAMP_DEFAULT_UI_SETTINGS } from '/@/renderer/store/default-ui-settings';
 import { getEnvSettingsOverrides } from '/@/renderer/store/env-settings-overrides';
 import { mergeOverridingColumns } from '/@/renderer/store/utils';
 import { FontValueSchema } from '/@/renderer/types/fonts';
@@ -50,6 +51,11 @@ import {
 import { IMAGE_PLACEHOLDER_PRIORITIES } from '/@/shared/utils/image-hash';
 
 const utils = isElectron() ? window.api.utils : null;
+
+const getDefaultListColumns = (columns: readonly string[]): TableColumn[] =>
+    columns.map((column) => column as TableColumn);
+
+const getDefaultListDisplay = (display: string): ListDisplayType => display as ListDisplayType;
 
 type DeepPartial<T> = {
     [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
@@ -1171,82 +1177,91 @@ export const playerItems: SortableItem<PlayerItem>[] = [
     },
 ];
 
+const defaultSidebarEnabledItems = new Set<string>(
+    KATIESAMP_DEFAULT_UI_SETTINGS.sidebarEnabledItems,
+);
+
 export const sidebarItems: SidebarItemType[] = [
     {
-        disabled: true,
+        disabled: !defaultSidebarEnabledItems.has('Now Playing'),
         id: 'Now Playing',
         label: i18n.t('page.sidebar.nowPlaying'),
         route: AppRoute.NOW_PLAYING,
     },
     {
-        disabled: true,
+        disabled: !defaultSidebarEnabledItems.has('Search'),
         id: 'Search',
         label: i18n.t('page.sidebar.search'),
         route: generatePath(AppRoute.SEARCH, { itemType: LibraryItem.SONG }),
     },
-    { disabled: false, id: 'Home', label: i18n.t('page.sidebar.home'), route: AppRoute.HOME },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Home'),
+        id: 'Home',
+        label: i18n.t('page.sidebar.home'),
+        route: AppRoute.HOME,
+    },
+    {
+        disabled: !defaultSidebarEnabledItems.has('Favorites'),
         id: 'Favorites',
         label: i18n.t('page.sidebar.favorites'),
         route: AppRoute.FAVORITES,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Albums'),
         id: 'Albums',
         label: i18n.t('page.sidebar.albums'),
         route: AppRoute.LIBRARY_ALBUMS,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Tracks'),
         id: 'Tracks',
         label: i18n.t('page.sidebar.tracks'),
         route: AppRoute.LIBRARY_SONGS,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Artists'),
         id: 'Artists',
         label: i18n.t('page.sidebar.albumArtists'),
         route: AppRoute.LIBRARY_ALBUM_ARTISTS,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Artists-all'),
         id: 'Artists-all',
         label: i18n.t('page.sidebar.artists'),
         route: AppRoute.LIBRARY_ARTISTS,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Genres'),
         id: 'Genres',
         label: i18n.t('page.sidebar.genres'),
         route: AppRoute.LIBRARY_GENRES,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Folders'),
         id: 'Folders',
         label: i18n.t('page.sidebar.folders'),
         route: AppRoute.LIBRARY_FOLDERS,
     },
     {
-        disabled: true,
+        disabled: !defaultSidebarEnabledItems.has('Playlists'),
         id: 'Playlists',
         label: i18n.t('page.sidebar.playlists'),
         route: AppRoute.PLAYLISTS,
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Collections'),
         id: 'Collections',
         label: i18n.t('page.sidebar.collections'),
         route: '',
     },
     {
-        disabled: false,
+        disabled: !defaultSidebarEnabledItems.has('Radio'),
         id: 'Radio',
         label: i18n.t('page.sidebar.radio'),
         route: AppRoute.RADIO,
     },
     {
-        disabled: true,
+        disabled: !defaultSidebarEnabledItems.has('Settings'),
         id: 'Settings',
         label: i18n.t('page.sidebar.settings'),
         route: AppRoute.SETTINGS,
@@ -1359,17 +1374,19 @@ const initialState: SettingsState = {
         blurExplicitImages: false,
         buttonSize: 15,
         collections: [],
-        combinedLyricsAndVisualizer: false,
+        combinedLyricsAndVisualizer:
+            KATIESAMP_DEFAULT_UI_SETTINGS.general.combinedLyricsAndVisualizer,
         confirmQueueChanges: true,
         disabledContextMenu: {},
         enableGridMultiSelect: false,
-        externalLinks: true,
+        externalLinks: KATIESAMP_DEFAULT_UI_SETTINGS.general.externalLinks,
         followCurrentSong: true,
         followSystemTheme: false,
         fullscreenAutoOpenTimeout: 0,
         genreTarget: GenreTarget.TRACK,
         homeFeature: true,
-        homeFeatureStyle: HomeFeatureStyle.SINGLE,
+        homeFeatureStyle: KATIESAMP_DEFAULT_UI_SETTINGS.general
+            .homeFeatureStyle as HomeFeatureStyle,
         homeItems,
         imagePlaceholderPriority: 'thumbhash',
         imageRes: {
@@ -1414,8 +1431,8 @@ const initialState: SettingsState = {
         showFavorites: true,
         showLyricsInSidebar: true,
         showQueueInSidebar: true,
-        showRatings: true,
-        showVisualizerInSidebar: true,
+        showRatings: KATIESAMP_DEFAULT_UI_SETTINGS.general.showRatings,
+        showVisualizerInSidebar: KATIESAMP_DEFAULT_UI_SETTINGS.general.showVisualizerInSidebar,
         sidebarCollapsedNavigation: true,
         sidebarCollapseShared: false,
         sidebarImageEnabled: true,
@@ -1496,7 +1513,7 @@ const initialState: SettingsState = {
     },
     lists: {
         ['albumDetail']: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.albumDetail.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1517,12 +1534,9 @@ const initialState: SettingsState = {
                         [TableColumn.TRACK_NUMBER]: 50,
                         [TableColumn.USER_FAVORITE]: 60,
                     },
-                    enabledColumns: [
-                        TableColumn.TRACK_NUMBER,
-                        TableColumn.TITLE,
-                        TableColumn.DURATION,
-                        TableColumn.USER_FAVORITE,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.albumDetail.enabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
@@ -1533,7 +1547,7 @@ const initialState: SettingsState = {
             },
         },
         fullScreen: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.fullScreen.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1545,14 +1559,12 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.INFINITE,
             table: {
                 autoFitColumns: true,
-                columns: SONG_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.value === TableColumn.ROW_INDEX ? false : column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    columns: SONG_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.fullScreen.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: false,
                 enableHorizontalBorders: false,
@@ -1573,13 +1585,9 @@ const initialState: SettingsState = {
                         [TableColumn.TRACK_NUMBER]: 50,
                         [TableColumn.USER_FAVORITE]: 60,
                     },
-                    enabledColumns: [
-                        TableColumn.TRACK_NUMBER,
-                        TableColumn.TITLE,
-                        TableColumn.DURATION,
-                        TableColumn.USER_FAVORITE,
-                        TableColumn.ACTIONS,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlistAlbum.detailEnabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
@@ -1588,7 +1596,9 @@ const initialState: SettingsState = {
                 enableVerticalBorders: false,
                 size: 'compact',
             },
-            display: ListDisplayType.GRID,
+            display: getDefaultListDisplay(
+                KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlistAlbum.display,
+            ),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1626,14 +1636,12 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.INFINITE,
             table: {
                 autoFitColumns: true,
-                columns: ALBUM_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    columns: ALBUM_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlistAlbum.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
                 enableHorizontalBorders: false,
@@ -1654,13 +1662,9 @@ const initialState: SettingsState = {
                         [TableColumn.TRACK_NUMBER]: 50,
                         [TableColumn.USER_FAVORITE]: 60,
                     },
-                    enabledColumns: [
-                        TableColumn.TRACK_NUMBER,
-                        TableColumn.TITLE,
-                        TableColumn.DURATION,
-                        TableColumn.USER_FAVORITE,
-                        TableColumn.ACTIONS,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.album.detailEnabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
@@ -1669,7 +1673,7 @@ const initialState: SettingsState = {
                 enableVerticalBorders: false,
                 size: 'compact',
             },
-            display: ListDisplayType.GRID,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.album.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1707,14 +1711,12 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.INFINITE,
             table: {
                 autoFitColumns: true,
-                columns: ALBUM_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    columns: ALBUM_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.album.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
                 enableHorizontalBorders: false,
@@ -1724,7 +1726,7 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.ALBUM_ARTIST]: {
-            display: ListDisplayType.GRID,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.albumArtist.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1749,12 +1751,9 @@ const initialState: SettingsState = {
                 columns: pickTableColumns({
                     autoSizeColumns: [TableColumn.TITLE],
                     columns: ALBUM_ARTIST_TABLE_COLUMNS,
-                    enabledColumns: [
-                        TableColumn.ROW_INDEX,
-                        TableColumn.IMAGE,
-                        TableColumn.TITLE,
-                        TableColumn.USER_FAVORITE,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.albumArtist.enabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
@@ -1765,7 +1764,7 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.ARTIST]: {
-            display: ListDisplayType.GRID,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.artist.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1790,17 +1789,9 @@ const initialState: SettingsState = {
                 columns: pickTableColumns({
                     autoSizeColumns: [TableColumn.TITLE],
                     columns: ALBUM_ARTIST_TABLE_COLUMNS,
-                    enabledColumns: [
-                        TableColumn.ROW_INDEX,
-                        TableColumn.IMAGE,
-                        TableColumn.TITLE,
-                        TableColumn.ALBUM_COUNT,
-                        TableColumn.SONG_COUNT,
-                        TableColumn.PLAY_COUNT,
-                        TableColumn.LAST_PLAYED,
-                        TableColumn.USER_FAVORITE,
-                        TableColumn.USER_RATING,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.artist.enabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
@@ -1811,7 +1802,7 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.GENRE]: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.genre.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1840,14 +1831,13 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.INFINITE,
             table: {
                 autoFitColumns: false,
-                columns: GENRE_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    autoSizeColumns: [TableColumn.TITLE],
+                    columns: GENRE_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.genre.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
                 enableHorizontalBorders: false,
@@ -1857,7 +1847,7 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.PLAYLIST]: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlist.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1877,12 +1867,9 @@ const initialState: SettingsState = {
                 columns: pickTableColumns({
                     autoSizeColumns: [TableColumn.TITLE],
                     columns: PLAYLIST_TABLE_COLUMNS,
-                    enabledColumns: [
-                        TableColumn.ROW_INDEX,
-                        TableColumn.TITLE,
-                        TableColumn.DURATION,
-                        TableColumn.SONG_COUNT,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlist.enabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
@@ -1893,7 +1880,9 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.PLAYLIST_SONG]: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(
+                KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlistSong.display,
+            ),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1925,14 +1914,12 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.INFINITE,
             table: {
                 autoFitColumns: true,
-                columns: PLAYLIST_SONG_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    columns: PLAYLIST_SONG_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.playlistSong.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
                 enableHorizontalBorders: false,
@@ -1942,7 +1929,7 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.QUEUE_SONG]: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.queueSong.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -1954,14 +1941,12 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.INFINITE,
             table: {
                 autoFitColumns: true,
-                columns: SONG_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    columns: SONG_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.queueSong.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
                 enableHorizontalBorders: false,
@@ -1971,7 +1956,7 @@ const initialState: SettingsState = {
             },
         },
         [LibraryItem.SONG]: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.song.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -2003,14 +1988,12 @@ const initialState: SettingsState = {
             pagination: ListPaginationType.PAGINATED,
             table: {
                 autoFitColumns: true,
-                columns: SONG_TABLE_COLUMNS.map((column) => ({
-                    align: column.align,
-                    autoSize: column.autoSize,
-                    id: column.value,
-                    isEnabled: column.isEnabled,
-                    pinned: column.pinned,
-                    width: column.width,
-                })),
+                columns: pickTableColumns({
+                    columns: SONG_TABLE_COLUMNS,
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.song.enabledColumns,
+                    ),
+                }),
                 enableAlternateRowColors: false,
                 enableHeader: true,
                 enableHorizontalBorders: false,
@@ -2020,7 +2003,7 @@ const initialState: SettingsState = {
             },
         },
         ['sideQueue']: {
-            display: ListDisplayType.TABLE,
+            display: getDefaultListDisplay(KATIESAMP_DEFAULT_UI_SETTINGS.lists.sideQueue.display),
             grid: {
                 itemGap: 'sm',
                 itemsPerRow: 6,
@@ -2035,12 +2018,9 @@ const initialState: SettingsState = {
                 columns: pickTableColumns({
                     autoSizeColumns: [TableColumn.TITLE_COMBINED],
                     columns: SONG_TABLE_COLUMNS,
-                    enabledColumns: [
-                        TableColumn.ROW_INDEX,
-                        TableColumn.TITLE_COMBINED,
-                        TableColumn.DURATION,
-                        TableColumn.USER_FAVORITE,
-                    ],
+                    enabledColumns: getDefaultListColumns(
+                        KATIESAMP_DEFAULT_UI_SETTINGS.lists.sideQueue.enabledColumns,
+                    ),
                 }),
                 enableAlternateRowColors: false,
                 enableHeader: true,

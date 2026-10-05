@@ -43,6 +43,11 @@ export const test = base.extend({
 
         await use(electronApp);
 
+        await electronApp
+            .evaluate(({ app }) => {
+                app.exit(0);
+            })
+            .catch(() => {});
         await electronApp.close().catch(() => {});
     },
     // Playwright requires object destructuring even when a fixture has no dependencies.
@@ -119,7 +124,7 @@ export const test = base.extend({
     userDataDirectory: async ({}, use) => {
         const directory = await mkdtemp(path.join(os.tmpdir(), 'katiesamp-ui-'));
         await use(directory);
-        await rm(directory, { force: true, recursive: true });
+        await rm(directory, { force: true, maxRetries: 5, recursive: true, retryDelay: 200 });
     },
 });
 
