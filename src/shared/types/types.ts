@@ -300,6 +300,7 @@ export type WebAudio = {
         leveler: DynamicsCompressorNode;
         levelerMakeup: GainNode;
         limiter: DynamicsCompressorNode;
+        outputAnalyser: AnalyserNode;
         preampGain: GainNode;
     };
     gains: GainNode[];

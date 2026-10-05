@@ -69,6 +69,7 @@ export const MainPlayButton = forwardRef<HTMLButtonElement, PlayButtonProps>(
 
         return (
             <ActionIcon
+                aria-label={isPaused ? (t('player.play') as string) : (t('player.pause') as string)}
                 className={clsx(styles.main, playerStateClass)}
                 icon={isPaused ? 'mediaPlay' : 'mediaPause'}
                 iconProps={{

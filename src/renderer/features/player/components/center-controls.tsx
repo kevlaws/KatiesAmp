@@ -90,6 +90,7 @@ const RadioStopButton = ({ disabled }: { disabled?: boolean }) => {
 
     return (
         <PlayerButton
+            aria-label={t('player.stop')}
             disabled={disabled}
             icon={<Icon fill="default" icon="mediaStop" size={buttonSize - 2} />}
             onClick={stop}
@@ -108,6 +109,7 @@ const StopButton = ({ disabled }: { disabled?: boolean }) => {
 
     return (
         <PlayerButton
+            aria-label={t('player.stop')}
             disabled={disabled}
             icon={<Icon fill="default" icon="mediaStop" size={buttonSize - 2} />}
             onClick={() => mediaStop()}
@@ -125,9 +127,16 @@ const ShuffleButton = ({ disabled }: { disabled?: boolean }) => {
     const buttonSize = useButtonSize();
     const shuffle = usePlayerShuffle();
     const { toggleShuffle } = usePlayer();
+    const label =
+        shuffle === PlayerShuffle.NONE
+            ? t('player.shuffle', {
+                  context: 'off',
+              })
+            : t('player.shuffle');
 
     return (
         <PlayerButton
+            aria-label={label}
             disabled={disabled}
             icon={
                 <Icon
@@ -139,12 +148,7 @@ const ShuffleButton = ({ disabled }: { disabled?: boolean }) => {
             isActive={shuffle !== PlayerShuffle.NONE}
             onClick={toggleShuffle}
             tooltip={{
-                label:
-                    shuffle === PlayerShuffle.NONE
-                        ? t('player.shuffle', {
-                              context: 'off',
-                          })
-                        : t('player.shuffle'),
+                label,
                 openDelay: 0,
             }}
             variant="tertiary"
@@ -159,6 +163,7 @@ const PreviousButton = ({ disabled }: { disabled?: boolean }) => {
 
     return (
         <PlayerButton
+            aria-label={t('player.previous')}
             disabled={disabled}
             icon={<Icon fill="default" icon="mediaPrevious" size={buttonSize} />}
             onClick={(e) => mediaPrevious(e.altKey)}
@@ -187,6 +192,7 @@ const SkipBackwardButton = ({ disabled }: { disabled?: boolean }) => {
 
     return (
         <PlayerButton
+            aria-label={t('player.skip', { context: 'back' })}
             disabled={disabled}
             icon={<Icon fill="default" icon="mediaStepBackward" size={buttonSize} />}
             onClick={mediaSkipBackward}
@@ -223,6 +229,7 @@ const SkipForwardButton = ({ disabled }: { disabled?: boolean }) => {
 
     return (
         <PlayerButton
+            aria-label={t('player.skip', { context: 'forward' })}
             disabled={disabled}
             icon={<Icon fill="default" icon="mediaStepForward" size={buttonSize} />}
             onClick={mediaSkipForward}
@@ -244,6 +251,7 @@ const NextButton = ({ disabled }: { disabled?: boolean }) => {
 
     return (
         <PlayerButton
+            aria-label={t('player.next')}
             disabled={disabled}
             icon={<Icon fill="default" icon="mediaNext" size={buttonSize} />}
             onClick={(e) => mediaNext(e.altKey)}
@@ -270,9 +278,16 @@ const RepeatButton = ({ disabled }: { disabled?: boolean }) => {
     const buttonSize = useButtonSize();
     const repeat = usePlayerRepeat();
     const { toggleRepeat } = usePlayer();
+    const label =
+        repeat === PlayerRepeat.NONE
+            ? t('player.repeat', { context: 'off' })
+            : repeat === PlayerRepeat.ALL
+              ? t('player.repeat', { context: 'all' })
+              : t('player.repeat', { context: 'one' });
 
     return (
         <PlayerButton
+            aria-label={label}
             disabled={disabled}
             icon={
                 repeat === PlayerRepeat.ONE ? (
@@ -288,19 +303,7 @@ const RepeatButton = ({ disabled }: { disabled?: boolean }) => {
             isActive={repeat !== PlayerRepeat.NONE}
             onClick={toggleRepeat}
             tooltip={{
-                label: `${
-                    repeat === PlayerRepeat.NONE
-                        ? t('player.repeat', {
-                              context: 'off',
-                          })
-                        : repeat === PlayerRepeat.ALL
-                          ? t('player.repeat', {
-                                context: 'all',
-                            })
-                          : t('player.repeat', {
-                                context: 'one',
-                            })
-                }`,
+                label,
                 openDelay: 0,
             }}
             variant="tertiary"

@@ -45,7 +45,7 @@ test('@full provides one global track-only results page', async ({ mockJellyfin,
     await expect(page.getByRole('heading', { name: 'Tracks' })).toBeVisible();
     await expect(page.getByText('Automation Track 1', { exact: true })).toBeVisible();
     await expect(page.getByText('ALBUM', { exact: true })).toBeVisible();
-    await expect(page.getByText('0:03', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('0:12', { exact: true }).first()).toBeVisible();
     const resultTrack = getSongCell(page, 'Automation Track 1');
     await expect(resultTrack).toHaveAttribute('draggable', 'true');
     await resultTrack.click({ button: 'right' });

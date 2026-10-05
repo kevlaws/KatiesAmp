@@ -6,7 +6,7 @@ const ONE_PIXEL_PNG = Buffer.from(
     'base64',
 );
 
-const makeWave = (durationSeconds = 3) => {
+const makeWave = (durationSeconds = 12, amplitude = 4_000, frequency = 220) => {
     const sampleRate = 8_000;
     const sampleCount = sampleRate * durationSeconds;
     const dataSize = sampleCount * 2;
@@ -26,7 +26,7 @@ const makeWave = (durationSeconds = 3) => {
     buffer.writeUInt32LE(dataSize, 40);
 
     for (let index = 0; index < sampleCount; index += 1) {
-        const sample = Math.sin((index / sampleRate) * Math.PI * 2 * 220) * 4_000;
+        const sample = Math.sin((index / sampleRate) * Math.PI * 2 * frequency) * amplitude;
         buffer.writeInt16LE(sample, 44 + index * 2);
     }
 
@@ -64,14 +64,15 @@ const createSong = (index, albumId = 'album-1') => ({
             ],
             Name: `Automation Track ${index}`,
             Path: `C:\\MockMusic\\Automation Track ${index}.wav`,
-            Size: 48_044,
+            Size: 192_044,
         },
     ],
     MediaType: 'Audio',
     Name: `Automation Track ${index}`,
+    NormalizationGain: index === 1 ? 18 : index === 2 ? -8 : 0,
     ParentIndexNumber: 1,
     ProductionYear: 2026,
-    RunTimeTicks: 3 * TICKS_PER_SECOND,
+    RunTimeTicks: 12 * TICKS_PER_SECOND,
     Type: 'Audio',
     UserData: { IsFavorite: false, PlayCount: 0, Played: false },
 });
@@ -98,7 +99,7 @@ const createLibrary = (songCount = 6) => {
         ImageTags: {},
         Name: 'Automation Album',
         ProductionYear: 2026,
-        RunTimeTicks: songs.length * 3 * TICKS_PER_SECOND,
+        RunTimeTicks: songs.length * 12 * TICKS_PER_SECOND,
         Studios: [],
         Type: 'MusicAlbum',
         UserData: { IsFavorite: false, PlayCount: 0, Played: false },
@@ -114,7 +115,7 @@ const createLibrary = (songCount = 6) => {
         MediaType: 'Playlist',
         Name: 'Automation Playlist',
         Overview: 'Predictable music used only by KatiesAmp automation.',
-        RunTimeTicks: songs.length * 3 * TICKS_PER_SECOND,
+        RunTimeTicks: songs.length * 12 * TICKS_PER_SECOND,
         Type: 'Playlist',
         UserData: { IsFavorite: false, PlayCount: 0, Played: false },
     };
@@ -150,7 +151,22 @@ const readJson = async (request) => {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 };
 
-const sendAudio = (request, response, audio) => {
+const writeAudio = async (response, audio, delayMs) => {
+    if (!delayMs) {
+        response.end(audio);
+        return;
+    }
+
+    const chunkSize = Math.max(1, Math.ceil(audio.length / 12));
+    for (let offset = 0; offset < audio.length; offset += chunkSize) {
+        if (response.destroyed) return;
+        response.write(audio.subarray(offset, Math.min(offset + chunkSize, audio.length)));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    response.end();
+};
+
+const sendAudio = async (request, response, audio, delayMs = 0) => {
     const range = request.headers.range;
     if (!range) {
         response.writeHead(200, {
@@ -159,7 +175,7 @@ const sendAudio = (request, response, audio) => {
             'Content-Length': audio.length,
             'Content-Type': 'audio/wav',
         });
-        response.end(audio);
+        await writeAudio(response, audio, delayMs);
         return;
     }
 
@@ -174,13 +190,15 @@ const sendAudio = (request, response, audio) => {
         'Content-Range': `bytes ${start}-${end}/${audio.length}`,
         'Content-Type': 'audio/wav',
     });
-    response.end(chunk);
+    await writeAudio(response, chunk, delayMs);
 };
 
 export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
     const state = {
+        audioDelayMs: 0,
         available: true,
         deniedItemIds: new Set(),
+        failedDownloadIds: new Set(),
         library: createLibrary(songCount),
         musicFolders: [
             {
@@ -191,7 +209,13 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         requests: [],
         unexpectedRequests: [],
     };
-    const audio = makeWave();
+    state.playlistSongIds = state.library.songs.map((song) => song.Id);
+    const audioBySongId = new Map(
+        state.library.songs.map((song, index) => [
+            song.Id,
+            makeWave(12, index === 0 ? 1_000 : index === 1 ? 20_000 : 4_000, 220 + index * 30),
+        ]),
+    );
 
     const server = http.createServer(async (request, response) => {
         const url = new URL(request.url || '/', 'http://127.0.0.1');
@@ -331,10 +355,13 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         }
 
         if (request.method === 'GET' && pathname === '/playlists/playlist-1/items') {
+            const songs = state.library.songs.filter((song) =>
+                state.playlistSongIds.includes(song.Id),
+            );
             sendJson(response, 200, {
-                Items: state.library.songs,
+                Items: songs,
                 StartIndex: 0,
-                TotalRecordCount: state.library.songs.length,
+                TotalRecordCount: songs.length,
             });
             return;
         }
@@ -409,7 +436,19 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                 pathname.includes('/universal') ||
                 pathname.endsWith('/download'))
         ) {
-            sendAudio(request, response, audio);
+            const songId = state.library.songs.find((song) =>
+                pathname.includes(song.Id.toLowerCase()),
+            )?.Id;
+            if (songId && state.failedDownloadIds.has(songId)) {
+                sendJson(response, 503, { error: `Forced download failure for ${songId}` });
+                return;
+            }
+            await sendAudio(
+                request,
+                response,
+                audioBySongId.get(songId) || audioBySongId.values().next().value,
+                state.audioDelayMs,
+            );
             return;
         }
 
@@ -452,16 +491,31 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             new Promise((resolve, reject) =>
                 server.close((error) => (error ? reject(error) : resolve())),
             ),
+        setAudioDelay: (delayMs) => {
+            state.audioDelayMs = delayMs;
+        },
         setAvailable: (available) => {
             state.available = available;
         },
         setDeniedItemIds: (ids) => {
             state.deniedItemIds = new Set(ids);
         },
+        setFailedDownloadIds: (ids) => {
+            state.failedDownloadIds = new Set(ids);
+        },
         setMusicFolders: (folders) => {
             state.musicFolders = folders;
         },
+        setPlaylistSongIds: (ids) => {
+            state.playlistSongIds = [...ids];
+            state.library.playlist.ChildCount = ids.length;
+        },
         state,
+        updateSong: (id, changes) => {
+            const song = state.library.songs.find((item) => item.Id === id);
+            if (!song) throw new Error(`Unknown mock song ${id}`);
+            Object.assign(song, changes);
+        },
         url: `http://127.0.0.1:${address.port}`,
     };
 };

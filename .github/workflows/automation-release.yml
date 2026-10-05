@@ -48,7 +48,7 @@ jobs:
                   fetch-depth: 0
 
             - name: Install pnpm
-              uses: pnpm/action-setup@v4
+              uses: pnpm/action-setup@v6
 
             - name: Install Node.js
               uses: actions/setup-node@v6
@@ -63,57 +63,50 @@ jobs:
               id: version
               shell: pwsh
               run: |
-                  $requestedVersion = '${{ inputs.version }}'.Trim()
-                  $channel = '${{ inputs.channel }}'
-                  $currentVersion = (Get-Content package.json | ConvertFrom-Json).version
-                  $releases = @(gh release list --limit 100 --json tagName | ConvertFrom-Json)
+                  $env:KATIESAMP_RELEASE_CHANNEL = '${{ inputs.channel }}'
+                  $env:KATIESAMP_REQUESTED_VERSION = '${{ inputs.version }}'.Trim()
+                  $env:KATIESAMP_CURRENT_VERSION = (Get-Content package.json | ConvertFrom-Json).version
+                  $releaseTags = @(
+                      gh release list --limit 100 --json tagName |
+                          ConvertFrom-Json |
+                          ForEach-Object { $_.tagName }
+                  )
+                  $env:KATIESAMP_RELEASE_TAGS = ConvertTo-Json -InputObject $releaseTags -Compress
+                  $resolved = node scripts/automation/resolve-release-version.mjs | ConvertFrom-Json
 
-                  if ($channel -eq 'beta') {
-                      if ($requestedVersion -match '^\d+\.\d+\.\d+-beta\.\d+$') {
-                          $resolvedVersion = $requestedVersion
-                      } else {
-                          $baseVersion = if ($requestedVersion) {
-                              $requestedVersion
-                          } else {
-                              $currentVersion -replace '-.*$', ''
-                          }
-
-                          if ($baseVersion -notmatch '^\d+\.\d+\.\d+$') {
-                              throw "Invalid beta base or exact version: $baseVersion"
-                          }
-
-                          $maxBeta = 0
-                          foreach ($release in $releases) {
-                              if ($release.tagName -match "^v$([regex]::Escape($baseVersion))-beta\.(\d+)$") {
-                                  $maxBeta = [Math]::Max($maxBeta, [int]$matches[1])
-                              }
-                          }
-                          $resolvedVersion = "$baseVersion-beta.$($maxBeta + 1)"
-                      }
-                      $manifest = 'beta.yml'
-                  } else {
-                      $resolvedVersion = if ($requestedVersion) {
-                          $requestedVersion
-                      } else {
-                          $currentVersion -replace '-.*$', ''
-                      }
-                      if ($resolvedVersion -notmatch '^\d+\.\d+\.\d+$') {
-                          throw "Invalid release version: $resolvedVersion"
-                      }
-                      $manifest = 'latest.yml'
-                  }
-
-                  $tag = "v$resolvedVersion"
-                  if ($releases.tagName -contains $tag) {
-                      throw "Release $tag already exists."
-                  }
-
-                  "version=$resolvedVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-                  "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-                  "manifest=$manifest" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  "version=$($resolved.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  "tag=$($resolved.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  "manifest=$($resolved.manifest)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
             - name: Set application version
               run: node scripts/automation/set-version.mjs "${{ steps.version.outputs.version }}"
+
+            - name: Download the previous beta installer
+              if: inputs.channel == 'beta'
+              id: previous-beta
+              shell: pwsh
+              run: |
+                  $previousTag = gh release list --limit 100 --json tagName,isPrerelease |
+                      ConvertFrom-Json |
+                      Where-Object { $_.isPrerelease -and $_.tagName -match '^v\d+\.\d+\.\d+-beta\.\d+$' } |
+                      Select-Object -First 1 -ExpandProperty tagName
+
+                  if (-not $previousTag) {
+                      Write-Host 'No previous beta release exists, so replacement testing is not applicable.'
+                      exit 0
+                  }
+
+                  $downloadDirectory = Join-Path $PWD 'test-results/beta-replacement'
+                  New-Item -ItemType Directory -Path $downloadDirectory -Force | Out-Null
+                  gh release download $previousTag --pattern 'KatiesAmp-*-win-x64.exe' --dir $downloadDirectory
+                  $installer = Get-ChildItem -LiteralPath $downloadDirectory -Filter '*.exe' |
+                      Select-Object -First 1
+                  if (-not $installer) {
+                      throw "Release $previousTag does not contain a Windows x64 installer."
+                  }
+
+                  "installer=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+                  "tag=$previousTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
             - name: Build Windows x64 installer
               shell: pwsh
@@ -133,6 +126,11 @@ jobs:
             - name: Verify Windows installer lifecycle
               shell: pwsh
               run: scripts/automation/verify-windows-installer.ps1 -ManifestName '${{ steps.version.outputs.manifest }}'
+
+            - name: Verify beta-to-beta installer replacement
+              if: inputs.channel == 'beta' && steps.previous-beta.outputs.installer != ''
+              shell: pwsh
+              run: scripts/automation/verify-beta-replacement.ps1 -PreviousInstallerPath '${{ steps.previous-beta.outputs.installer }}' -ManifestName '${{ steps.version.outputs.manifest }}' -ExpectedVersion '${{ steps.version.outputs.version }}'
 
             - name: Generate SHA-256 checksums
               shell: pwsh

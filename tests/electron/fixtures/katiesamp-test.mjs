@@ -10,34 +10,40 @@ import { startMockJellyfin } from './mock-jellyfin.mjs';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(currentDirectory, '../../..');
-const packageVersion = JSON.parse(
+export const packageVersion = JSON.parse(
     readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
 ).version;
 
 const isExpectedMediaCancellation = (message) =>
     message.startsWith('The play() request was interrupted by a new load request.');
 
+export const launchKatiesAmp = ({ mockJellyfin, serverLock = 'true', userDataDirectory }) =>
+    electron.launch({
+        args: [`--user-data-dir=${userDataDirectory}`, repositoryRoot],
+        env: {
+            ...process.env,
+            APPDATA: userDataDirectory,
+            DISABLE_AUTO_UPDATES: '1',
+            KATIESAMP_AUTOMATION: '1',
+            SERVER_LOCK: serverLock,
+            SERVER_NAME: 'KATIESMUSICSERVER',
+            SERVER_TYPE: 'jellyfin',
+            SERVER_URL: mockJellyfin.url,
+        },
+        executablePath: electronPath,
+    });
+
 export const test = base.extend({
-    electronApp: async ({ mockJellyfin, serverLock }, use) => {
-        const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), 'katiesamp-ui-'));
-        const electronApp = await electron.launch({
-            args: [`--user-data-dir=${userDataDirectory}`, repositoryRoot],
-            env: {
-                ...process.env,
-                APPDATA: userDataDirectory,
-                DISABLE_AUTO_UPDATES: '1',
-                SERVER_LOCK: serverLock,
-                SERVER_NAME: 'KATIESMUSICSERVER',
-                SERVER_TYPE: 'jellyfin',
-                SERVER_URL: mockJellyfin.url,
-            },
-            executablePath: electronPath,
+    electronApp: async ({ mockJellyfin, serverLock, userDataDirectory }, use) => {
+        const electronApp = await launchKatiesAmp({
+            mockJellyfin,
+            serverLock,
+            userDataDirectory,
         });
 
         await use(electronApp);
 
         await electronApp.close().catch(() => {});
-        await rm(userDataDirectory, { force: true, recursive: true });
     },
     // Playwright requires object destructuring even when a fixture has no dependencies.
     // eslint-disable-next-line no-empty-pattern
@@ -108,6 +114,13 @@ export const test = base.extend({
         ).toEqual([]);
     },
     serverLock: ['true', { option: true }],
+    // Playwright requires object destructuring even when a fixture has no dependencies.
+    // eslint-disable-next-line no-empty-pattern
+    userDataDirectory: async ({}, use) => {
+        const directory = await mkdtemp(path.join(os.tmpdir(), 'katiesamp-ui-'));
+        await use(directory);
+        await rm(directory, { force: true, recursive: true });
+    },
 });
 
 export { expect };

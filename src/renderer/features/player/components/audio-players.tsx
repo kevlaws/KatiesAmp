@@ -305,6 +305,9 @@ const AudioPlayersContent = ({
                 ? OUTPUT_LIMITER
                 : null,
         );
+        const outputAnalyser = context.createAnalyser();
+        outputAnalyser.fftSize = 2048;
+        outputAnalyser.smoothingTimeConstant = 0;
 
         // Wire both player slots through one output chain so crossfades receive
         // the same EQ, manual compression, levelling, and peak protection.
@@ -326,9 +329,10 @@ const AudioPlayersContent = ({
         compressorMakeup.connect(levelerNode);
         levelerNode.connect(levelerMakeup);
         levelerMakeup.connect(limiterNode);
-        limiterNode.connect(context.destination);
+        limiterNode.connect(outputAnalyser);
+        outputAnalyser.connect(context.destination);
 
-        setWebAudio?.({
+        const nextWebAudio = {
             context,
             dsp: {
                 compressor: compressorNode,
@@ -337,12 +341,22 @@ const AudioPlayersContent = ({
                 leveler: levelerNode,
                 levelerMakeup,
                 limiter: limiterNode,
+                outputAnalyser,
                 preampGain,
             },
             gains,
-        });
+        };
+        setWebAudio?.(nextWebAudio);
+
+        const automationWindow = window as typeof window & {
+            __katiesAmpAudioAutomation?: typeof nextWebAudio;
+        };
+        if (window.api.utils.automation) {
+            automationWindow.__katiesAmpAudioAutomation = nextWebAudio;
+        }
 
         return () => {
+            delete automationWindow.__katiesAmpAudioAutomation;
             void context.close().catch(() => {});
             setWebAudio?.(undefined);
         };
