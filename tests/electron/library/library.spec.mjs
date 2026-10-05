@@ -1,5 +1,16 @@
 import { expect, getSongCell, login, navigateTo, test } from '../fixtures/katiesamp-test.mjs';
 
+const expectRenderedColumnCount = async (scope, itemName, expectedCount) => {
+    const itemCell = scope
+        .getByText(itemName, { exact: true })
+        .locator('xpath=ancestor::div[@data-row-index][1]')
+        .first();
+    await expect(itemCell).toBeVisible({ timeout: 15_000 });
+    const rowKey = await itemCell.getAttribute('data-row-index');
+    expect(rowKey).toBeTruthy();
+    await expect(scope.locator(`[data-row-index="${rowKey}"]`)).toHaveCount(expectedCount);
+};
+
 test.beforeEach(async ({ page }) => {
     await login(page);
 });
@@ -16,6 +27,43 @@ test('@full loads songs from Jellyfin', async ({ page }) => {
     await expect(getSongCell(page, 'Automation Track 1')).toBeVisible({
         timeout: 15_000,
     });
+});
+
+test('@full uses the clean-install navigation and content columns', async ({ page }) => {
+    const sidebar = page.locator('#left-sidebar');
+    for (const label of ['Home', 'Albums', 'Tracks', 'Artists', 'Settings']) {
+        await expect(sidebar.getByText(label, { exact: true }).first()).toBeVisible();
+    }
+    for (const label of [
+        'Now Playing',
+        'Search',
+        'Favorites',
+        'Album Artists',
+        'Genres',
+        'Folders',
+        'Playlists',
+        'Collections',
+        'Radio Stations',
+    ]) {
+        await expect(sidebar.getByText(label, { exact: true })).toHaveCount(0);
+    }
+
+    const content = page.locator('#main-content');
+    await navigateTo(page, '/library/albums');
+    await expectRenderedColumnCount(content, 'Automation Album', 3);
+
+    await navigateTo(page, '/library/artists');
+    await expectRenderedColumnCount(content, 'Automation Artist', 2);
+
+    await navigateTo(page, '/library/songs');
+    await expectRenderedColumnCount(content, 'Automation Track 1', 4);
+
+    const album = sidebar.getByText('Automation Album', { exact: true });
+    await expect(album).toBeVisible({ timeout: 15_000 });
+    await album.click({ button: 'right' });
+    await page.getByRole('menuitem', { exact: true, name: 'Add to end of queue' }).click();
+    await page.getByRole('button', { name: 'View queue' }).click();
+    await expectRenderedColumnCount(page.locator('#sidebar-queue'), 'Automation Track 1', 3);
 });
 
 test('@full shows an artist as a tracks-only screen', async ({ page }) => {

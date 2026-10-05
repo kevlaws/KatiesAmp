@@ -94,5 +94,7 @@ test('@full protects administrator controls and allows the password to be change
         .getByRole('textbox', { exact: true, name: 'Administrator password' })
         .fill(replacementPassword);
     await page.getByRole('button', { name: 'Unlock' }).click();
-    await expect(page.getByText('Grid rows')).toBeVisible();
+    await expect(
+        page.getByRole('dialog').getByText('Table columns', { exact: true }),
+    ).toBeVisible();
 });

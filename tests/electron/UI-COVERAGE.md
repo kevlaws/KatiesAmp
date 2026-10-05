@@ -6,9 +6,9 @@ The UI suite deliberately separates quick pull request confidence from slower be
 | --- | --- | --- | --- | --- |
 | Launch and sign-in | App identity, configured server form, successful login | Invalid credentials | - | Server loss and recovery, Quick Connect |
 | Home | Brand, support details, user, version, connected server | Narrow-window layout, music-folder selector, live permission refresh | - | Repeated resize stress, offline status transition |
-| Library | - | Albums, songs, and playlists load from Jellyfin | - | Large fixture library, search, sorting, filtering, metadata refresh |
+| Library | - | Albums, songs, and playlists load from Jellyfin; clean-install navigation and Album, Artist, and Track content columns | - | Large fixture library, search, sorting, filtering, metadata refresh |
 | Playback | - | Volume levelling defaults, profiles, persistence, and Web/MPV availability | Synthetic playback plus measured Web Audio levelling, limiting, and crossfade output | Real MPV output measurement and perceptual loudness comparison |
-| Queue | - | - | Skip removal, later-track selection, visible shuffle order, repeat-off stop, and repeat-all or shuffled refill before track end | Exact drag position in the rendered virtual queue and crossfade plus refill in one scenario |
+| Queue | - | Clean-install side-queue columns and fullscreen queue default and toggle | Skip removal, later-track selection, visible shuffle order, repeat-off stop, and repeat-all or shuffled refill before track end | Exact drag position in the rendered virtual queue and crossfade plus refill in one scenario |
 | Downloads | - | - | Actions and icons, live progress, cancellation, retry, application restart restoration, playlist synchronization, and playback after server loss | Interrupted-download resume |
 | Product policy | - | Radio and playlist-creation entry points stay hidden | - | Native application-menu restrictions |
 | Packaging and updates | - | Production build | Portable launch, NSIS install, installed launch, uninstall | Signed `electron-updater` transport and install against a temporary release feed |
