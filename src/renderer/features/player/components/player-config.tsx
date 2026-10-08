@@ -209,6 +209,7 @@ export const PlayerConfig = () => {
         <Popover position="top" withArrow>
             <Popover.Target>
                 <ActionIcon
+                    aria-label={t('common.setting', { count: 2 })}
                     icon="mediaSettings"
                     iconProps={{
                         size: 'lg',
@@ -399,7 +400,7 @@ const CrossfadeStyleConfig = () => {
 };
 
 const CrossfadeDurationConfig = () => {
-    const status = usePlayerStatus();
+    const { t } = useTranslation();
     const playbackSettings = usePlaybackSettings();
     const { crossfadeDuration, transitionType } = usePlayerProperties();
     const { setCrossfadeDuration } = usePlayerActions();
@@ -408,9 +409,7 @@ const CrossfadeDurationConfig = () => {
         <Slider
             defaultValue={crossfadeDuration}
             disabled={
-                playbackSettings.type !== PlayerType.WEB ||
-                transitionType !== PlayerStyle.CROSSFADE ||
-                status === PlayerStatus.PLAYING
+                playbackSettings.type !== PlayerType.WEB || transitionType !== PlayerStyle.CROSSFADE
             }
             marks={[
                 { label: '3', value: 3 },
@@ -427,6 +426,7 @@ const CrossfadeDurationConfig = () => {
             styles={{
                 root: {},
             }}
+            thumbLabel={t('setting.crossfadeDuration')}
             w="100%"
         />
     );
