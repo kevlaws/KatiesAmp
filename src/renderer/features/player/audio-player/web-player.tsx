@@ -1,4 +1,4 @@
-import type { Dispatch } from 'react';
+import type { Dispatch, MutableRefObject } from 'react';
 import type ReactPlayer from 'react-player';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -17,6 +17,11 @@ import {
     useSongUrl,
 } from '/@/renderer/features/player/audio-player/hooks/use-stream-url';
 import { PlayerOnProgressProps } from '/@/renderer/features/player/audio-player/types';
+import {
+    captureCrossfadeTransitionSettings,
+    type CrossfadeTransitionSettings,
+    resolveCrossfadeTransitionSettings,
+} from '/@/renderer/features/player/audio-player/utils/crossfade-transition';
 import {
     calculateReplayGainMultiplier,
     getReplayGainMode,
@@ -73,7 +78,13 @@ export function WebPlayer() {
         return status;
     });
     const [isTransitioning, setIsTransitioning] = useState<boolean | string>(false);
+    const activeCrossfadeSettingsRef = useRef<CrossfadeTransitionSettings | null>(null);
     const fadeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    const resetTransition = useCallback(() => {
+        activeCrossfadeSettingsRef.current = null;
+        setIsTransitioning(false);
+    }, []);
 
     const [player1Source, setPlayer1Source] = useState<MediaElementAudioSourceNode | null>(null);
     const [player2Source, setPlayer2Source] = useState<MediaElementAudioSourceNode | null>(null);
@@ -189,6 +200,7 @@ export function WebPlayer() {
             switch (transitionType) {
                 case PlayerStyle.CROSSFADE:
                     crossfadeHandler({
+                        activeCrossfadeSettingsRef,
                         crossfadeDuration: crossfadeDuration,
                         crossfadeStyle,
                         currentPlayer: playerRef.current.player1(),
@@ -258,6 +270,7 @@ export function WebPlayer() {
             switch (transitionType) {
                 case PlayerStyle.CROSSFADE:
                     crossfadeHandler({
+                        activeCrossfadeSettingsRef,
                         crossfadeDuration: crossfadeDuration,
                         crossfadeStyle,
                         currentPlayer: playerRef.current.player2(),
@@ -317,9 +330,9 @@ export function WebPlayer() {
             } else {
                 playerRef.current?.setVolume(volume);
             }
-            setIsTransitioning(false);
+            resetTransition();
         }
-    }, [mediaAutoNext, volume]);
+    }, [mediaAutoNext, resetTransition, volume]);
     const handleOnEndedPlayer2 = useCallback(() => {
         mediaAutoNext();
         const storeStatus = usePlayerStoreBase.getState().player.status;
@@ -335,30 +348,30 @@ export function WebPlayer() {
             } else {
                 playerRef.current?.setVolume(volume);
             }
-            setIsTransitioning(false);
+            resetTransition();
         }
-    }, [mediaAutoNext, volume]);
+    }, [mediaAutoNext, resetTransition, volume]);
 
     const player = usePlayer();
 
     usePlayerEvents(
         {
             onCurrentSongChange: () => {
-                setIsTransitioning(false);
+                resetTransition();
             },
             onPlayerQueueChange: () => {
                 if (usePlayerStoreBase.getState().player.status !== PlayerStatus.PLAYING) {
-                    setIsTransitioning(false);
+                    resetTransition();
                 }
             },
             onPlayerSeekToTimestamp: (properties) => {
-                setIsTransitioning(false);
+                resetTransition();
 
                 const timestamp = properties.timestamp;
 
                 // Reset transition state if seeking during a crossfade transition
                 if (isTransitioning && transitionType === PlayerStyle.CROSSFADE) {
-                    setIsTransitioning(false);
+                    resetTransition();
 
                     if (num === 1) {
                         playerRef.current?.player1()?.setVolume(volume);
@@ -384,7 +397,7 @@ export function WebPlayer() {
                 }
             },
             onPlayerStatus: async (properties) => {
-                setIsTransitioning(false);
+                resetTransition();
 
                 const status = properties.status;
 
@@ -429,7 +442,7 @@ export function WebPlayer() {
                 player.mediaStop();
             },
         },
-        [volume, num, isTransitioning, transitionType, audioFadeOnStatusChange],
+        [volume, num, isTransitioning, transitionType, audioFadeOnStatusChange, resetTransition],
     );
 
     // Cleanup fade interval on unmount
@@ -693,6 +706,7 @@ export function WebPlayer() {
 }
 
 function crossfadeHandler(args: {
+    activeCrossfadeSettingsRef: MutableRefObject<CrossfadeTransitionSettings | null>;
     crossfadeDuration: number;
     crossfadeStyle: CrossfadeStyle;
     currentPlayer: {
@@ -713,6 +727,7 @@ function crossfadeHandler(args: {
     volume: number;
 }) {
     const {
+        activeCrossfadeSettingsRef,
         crossfadeDuration,
         crossfadeStyle,
         currentPlayer,
@@ -729,6 +744,7 @@ function crossfadeHandler(args: {
     const player = `player${playerNum}`;
 
     if (usePlayerStoreBase.getState().player.status !== PlayerStatus.PLAYING) {
+        activeCrossfadeSettingsRef.current = null;
         if (isTransitioning) {
             setIsTransitioning(false);
         }
@@ -737,6 +753,7 @@ function crossfadeHandler(args: {
 
     // If there is no next song to transition to, ensure we don't enter or stay in a transition
     if (!hasNextSong) {
+        activeCrossfadeSettingsRef.current = null;
         currentPlayer.setVolume(volume);
         nextPlayer.setVolume(0);
         nextPlayer.ref?.getInternalPlayer()?.pause();
@@ -755,6 +772,10 @@ function crossfadeHandler(args: {
                 return;
             }
 
+            activeCrossfadeSettingsRef.current = captureCrossfadeTransitionSettings(
+                crossfadeDuration,
+                crossfadeStyle,
+            );
             nextPlayer.setVolume(0);
             nextPlayer.ref?.getInternalPlayer().play();
             return setIsTransitioning(player);
@@ -767,11 +788,17 @@ function crossfadeHandler(args: {
         return;
     }
 
+    const transitionSettings = resolveCrossfadeTransitionSettings(
+        Boolean(isTransitioning),
+        activeCrossfadeSettingsRef.current,
+        crossfadeDuration,
+        crossfadeStyle,
+    );
     const timeLeft = duration - currentTime;
 
-    const progress = (crossfadeDuration - timeLeft) / crossfadeDuration;
+    const progress = (transitionSettings.duration - timeLeft) / transitionSettings.duration;
 
-    const { easeIn, easeOut } = getCrossfadeEasing(crossfadeStyle);
+    const { easeIn, easeOut } = getCrossfadeEasing(transitionSettings.style);
 
     const easedProgressOut = easeOut(progress);
     const easedProgressIn = easeIn(progress);
