@@ -6,8 +6,9 @@ import { useEffect } from 'react';
 
 import { api } from '/@/renderer/api';
 import { getAlbumSongsById } from '/@/renderer/features/player/utils';
+import { usePlayerStoreBase } from '/@/renderer/store/player.store';
 import { logger } from '/@/renderer/utils/logger';
-import { PlaylistSongListResponse, Song } from '/@/shared/types/domain-types';
+import { LibraryItem, PlaylistSongListResponse, Song } from '/@/shared/types/domain-types';
 
 const syncing = new Set<string>();
 
@@ -28,6 +29,12 @@ const syncTracks = async (playlist: OfflinePlaylist, songs: Song[]) => {
                 }),
             })),
         });
+        usePlayerStoreBase
+            .getState()
+            .removeUnavailableSongs(playlist.serverId, result.removedSongIds, {
+                id: playlist.id,
+                type: LibraryItem.PLAYLIST,
+            });
         if (result.downloaded || result.removed) {
             logger.info('Offline playlist synchronized', {
                 downloaded: result.downloaded,
@@ -58,6 +65,12 @@ const syncAlbumTracks = async (album: OfflineAlbum, queryClient: QueryClient, so
                 }),
             })),
         });
+        usePlayerStoreBase
+            .getState()
+            .removeUnavailableSongs(album.serverId, result.removedSongIds, {
+                id: album.id,
+                type: LibraryItem.ALBUM,
+            });
         if (result.downloaded || result.removed) {
             logger.info('Offline album synchronized', {
                 albumId: album.id,
@@ -123,6 +136,7 @@ export const useOfflinePlaylistSync = (
                 if (album.serverId !== serverId) continue;
                 try {
                     const response = await getAlbumSongsById({
+                        forceRefresh: true,
                         id: [album.id],
                         queryClient,
                         serverId,

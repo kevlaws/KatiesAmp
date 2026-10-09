@@ -10,6 +10,7 @@ import { eventEmitter } from '/@/renderer/events/event-emitter';
 import { useRadioStore as useRadioPlayerStore } from '/@/renderer/features/radio/hooks/use-radio-player';
 import { createSelectors } from '/@/renderer/lib/zustand';
 import { insertQueueIdsAtTarget } from '/@/renderer/store/player-queue-insertion';
+import { pruneUnavailableQueue } from '/@/renderer/store/player-queue-pruning';
 import { removeQueueIds, shouldRefillQueue } from '/@/renderer/store/player-queue-repeat';
 import { useSettingsStore } from '/@/renderer/store/settings.store';
 import {
@@ -76,6 +77,11 @@ interface Actions {
     moveSelectedToTop: (items: QueueSong[]) => void;
     prepareQueueRefill: () => void;
     refreshQueueSource: (items: Song[]) => void;
+    removeUnavailableSongs: (
+        serverId: string,
+        songIds: string[],
+        source: Pick<QueueSource, 'id' | 'type'>,
+    ) => void;
     setCrossfadeDuration: (duration: number) => void;
     setCrossfadeStyle: (style: CrossfadeStyle) => void;
     setPauseOnNextSongEnd: (value: boolean) => void;
@@ -1666,6 +1672,110 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                         cleanupOrphanedSongs(state);
                     });
                 },
+                removeUnavailableSongs: (
+                    serverId: string,
+                    songIds: string[],
+                    source: Pick<QueueSource, 'id' | 'type'>,
+                ) => {
+                    if (songIds.length === 0) return;
+
+                    const previousState = get();
+                    if (
+                        previousState.queue.source?.id !== source.id ||
+                        previousState.queue.source.type !== source.type
+                    ) {
+                        return;
+                    }
+                    const previousPlaybackQueue = previousState.getPlaybackQueue();
+                    const previousIndex = previousState.player.index;
+                    const previousSong = previousPlaybackQueue.items[previousIndex];
+                    const wasPlaying = previousState.player.status === PlayerStatus.PLAYING;
+                    let currentRemoved = false;
+                    let nextCurrentId: string | undefined;
+                    let nextCurrentIndex = -1;
+
+                    set((state) => {
+                        const result = pruneUnavailableQueue({
+                            currentIndex: state.player.index,
+                            defaultIds: state.queue.default,
+                            repeatAll: state.player.repeat === PlayerRepeat.ALL,
+                            serverId,
+                            shuffledIndexes: state.queue.shuffled,
+                            shuffleEnabled: isShuffleEnabled(state),
+                            songs: state.queue.songs,
+                            unavailableSongIds: songIds,
+                        });
+
+                        if (result.removedUniqueIds.length === 0) return;
+
+                        currentRemoved = result.currentRemoved;
+                        nextCurrentId = result.nextCurrentId;
+                        nextCurrentIndex = result.nextCurrentIndex;
+                        const removedUniqueIds = new Set(result.removedUniqueIds);
+                        const unavailableSongIds = new Set(songIds);
+
+                        state.queue.default = result.defaultIds;
+                        state.queue.shuffled = result.shuffledIndexes;
+                        state.queue.consumed = state.queue.consumed.filter(
+                            (id) => !removedUniqueIds.has(id),
+                        );
+                        state.queue.preparedRefillIds = state.queue.preparedRefillIds.filter(
+                            (id) => !removedUniqueIds.has(id),
+                        );
+                        if (
+                            state.queue.preparedRefillBoundary &&
+                            removedUniqueIds.has(state.queue.preparedRefillBoundary)
+                        ) {
+                            state.queue.preparedRefillBoundary = null;
+                        }
+                        state.queue.recentlyPlayed = state.queue.recentlyPlayed.filter(
+                            (id) => !unavailableSongIds.has(id),
+                        );
+                        if (state.queue.source) {
+                            state.queue.source.trackIds = state.queue.source.trackIds.filter(
+                                (id) => !removedUniqueIds.has(id),
+                            );
+                            if (state.queue.source.trackIds.length === 0) {
+                                state.queue.source = null;
+                            }
+                        }
+                        for (const uniqueId of removedUniqueIds) {
+                            delete state.queue.songs[uniqueId];
+                        }
+
+                        if (currentRemoved) {
+                            setTimestampStore(0);
+                            state.player.seekToTimestamp = uniqueSeekToTimestamp(0);
+                            state.player.index = nextCurrentIndex;
+
+                            if (nextCurrentId) {
+                                if (wasPlaying) {
+                                    state.player.playerNum = state.player.playerNum === 1 ? 2 : 1;
+                                }
+                            } else {
+                                state.player.status = PlayerStatus.STOPPED;
+                            }
+                        } else {
+                            const currentUniqueId = previousSong?._uniqueId;
+                            const playbackIds = getPlaybackQueueIds(state);
+                            if (currentUniqueId && playbackIds.includes(currentUniqueId)) {
+                                state.player.index = playbackIds.indexOf(currentUniqueId);
+                            } else if (playbackIds.length === 0) {
+                                state.player.index = -1;
+                            }
+                        }
+
+                        cleanupOrphanedSongs(state);
+                    });
+
+                    if (currentRemoved && !nextCurrentId) {
+                        eventEmitter.emit('PLAYER_STOP', {
+                            id: previousSong?._uniqueId,
+                            index: previousIndex >= 0 ? previousIndex : undefined,
+                            reset: true,
+                        });
+                    }
+                },
                 setQueue: (items, index, position) => {
                     const newItems = items.map(toQueueSong);
                     const newUniqueIds = newItems.map((item) => item._uniqueId);
@@ -1979,6 +2089,7 @@ export const usePlayerActions = () => {
             moveSelectedToTop: state.moveSelectedToTop,
             prepareQueueRefill: state.prepareQueueRefill,
             refreshQueueSource: state.refreshQueueSource,
+            removeUnavailableSongs: state.removeUnavailableSongs,
             setCrossfadeDuration: state.setCrossfadeDuration,
             setCrossfadeStyle: state.setCrossfadeStyle,
             setPauseOnNextSongEnd: state.setPauseOnNextSongEnd,

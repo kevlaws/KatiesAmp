@@ -825,6 +825,7 @@ const syncCollection = async (
 
         const songIds = tracks.map((track) => track.song.id);
         let removed = 0;
+        let removedSongIds: string[] = [];
         const syncedCollection = await updateManifest(async (nextManifest) => {
             const key =
                 type === 'album'
@@ -833,9 +834,9 @@ const syncCollection = async (
             const collections = type === 'album' ? nextManifest.albums : nextManifest.playlists;
             const previousSongIds = new Set(collections[key]?.songIds ?? []);
             const currentSongIds = new Set(songIds);
+            removedSongIds = [...previousSongIds].filter((songId) => !currentSongIds.has(songId));
 
-            for (const songId of previousSongIds) {
-                if (currentSongIds.has(songId)) continue;
+            for (const songId of removedSongIds) {
                 const entryKey = getEntryKey(collection.serverId, songId);
                 const entry = nextManifest.entries[entryKey];
                 if (!entry) continue;
@@ -871,6 +872,7 @@ const syncCollection = async (
             collection: syncedCollection,
             downloaded: downloadedEntries.length,
             removed,
+            removedSongIds,
             unchanged: unchangedTracks.length,
         };
     } catch (error) {

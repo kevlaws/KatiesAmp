@@ -38,6 +38,20 @@ const openDownloads = async (page) => {
     return downloadsPanel(page);
 };
 
+const queueNames = async (page) => {
+    const rows = await page.locator('#sidebar-queue [data-row-index]').allInnerTexts();
+    return rows.flatMap((row) => row.match(/Automation Track \d+/)?.slice(0, 1) ?? []);
+};
+
+const seekActiveTrackNearEnd = (page, secondsFromEnd = 0.15) =>
+    page.evaluate((offset) => {
+        const active = [...document.querySelectorAll('audio')].find((audio) => !audio.paused);
+        if (!active || !Number.isFinite(active.duration)) {
+            throw new Error('No active audio element is available');
+        }
+        active.currentTime = Math.max(0, active.duration - offset);
+    }, secondsFromEnd);
+
 test('@nightly displays live progress, supports cancellation, and retries the batch', async ({
     mockJellyfin,
     page,
@@ -183,4 +197,41 @@ test('@nightly synchronizes playlist removals and changed server metadata', asyn
         window.api.offline.listPlaylists().then((items) => items[0]),
     );
     expect(managedPlaylist.songIds).toEqual(['song-1', 'song-2']);
+});
+
+test('@nightly removes a server-deleted download from the queue and continues playback', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    await downloadAlbum(page);
+    await waitForTaskState(page, 'complete');
+    await expect
+        .poll(() => page.evaluate(() => window.api.offline.list().then((items) => items.length)))
+        .toBe(6);
+
+    await navigateTo(page, '/library/songs');
+    const firstSong = getSongCell(page, 'Automation Track 1');
+    await expect(firstSong).toBeVisible({ timeout: 15_000 });
+    await firstSong.dblclick();
+    await page.getByRole('button', { name: 'View queue' }).click();
+    await expect.poll(() => queueNames(page)).toContain('Automation Track 2');
+
+    mockJellyfin.removeSong('song-2');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+    await expect
+        .poll(() => page.evaluate(() => window.api.offline.list().then((items) => items.length)), {
+            timeout: 20_000,
+        })
+        .toBe(5);
+    await expect.poll(() => queueNames(page)).not.toContain('Automation Track 2');
+    await expect(
+        page.locator('.media-player').getByText('Automation Track 1', { exact: true }),
+    ).toBeVisible();
+
+    await seekActiveTrackNearEnd(page);
+    await expect(
+        page.locator('.media-player').getByText('Automation Track 3', { exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
 });
