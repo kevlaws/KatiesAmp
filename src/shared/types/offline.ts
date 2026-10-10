@@ -18,6 +18,7 @@ export type OfflineAlbumSyncResult = {
     album: OfflineAlbum;
     downloaded: number;
     removed: number;
+    removedSongIds: string[];
     unchanged: number;
 };
 
@@ -92,6 +93,7 @@ export type OfflinePlaylistSyncResult = {
     downloaded: number;
     playlist: OfflinePlaylist;
     removed: number;
+    removedSongIds: string[];
     unchanged: number;
 };
 

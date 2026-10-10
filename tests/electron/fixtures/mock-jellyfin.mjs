@@ -436,9 +436,14 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                 pathname.includes('/universal') ||
                 pathname.endsWith('/download'))
         ) {
-            const songId = state.library.songs.find((song) =>
-                pathname.includes(song.Id.toLowerCase()),
-            )?.Id;
+            const songId = [...audioBySongId.keys()].find((id) =>
+                pathname.includes(id.toLowerCase()),
+            );
+            const songAvailable = state.library.songs.some((song) => song.Id === songId);
+            if (!songId || !songAvailable) {
+                sendJson(response, 404, { error: 'Audio item not found' });
+                return;
+            }
             if (songId && state.failedDownloadIds.has(songId)) {
                 sendJson(response, 503, { error: `Forced download failure for ${songId}` });
                 return;
@@ -491,6 +496,17 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             new Promise((resolve, reject) =>
                 server.close((error) => (error ? reject(error) : resolve())),
             ),
+        removeSong: (id) => {
+            const index = state.library.songs.findIndex((song) => song.Id === id);
+            if (index === -1) throw new Error(`Unknown mock song ${id}`);
+            state.library.songs.splice(index, 1);
+            state.playlistSongIds = state.playlistSongIds.filter((songId) => songId !== id);
+            state.library.album.ChildCount = state.library.songs.length;
+            state.library.album.RunTimeTicks = state.library.songs.length * 12 * TICKS_PER_SECOND;
+            state.library.playlist.ChildCount = state.playlistSongIds.length;
+            state.library.playlist.RunTimeTicks =
+                state.playlistSongIds.length * 12 * TICKS_PER_SECOND;
+        },
         setAudioDelay: (delayMs) => {
             state.audioDelayMs = delayMs;
         },

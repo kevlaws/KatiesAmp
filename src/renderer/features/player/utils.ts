@@ -58,13 +58,14 @@ export const getPlaylistSongsById = async (args: {
 };
 
 export const getAlbumSongsById = async (args: {
+    forceRefresh?: boolean;
     id: string[];
     orderByIds?: boolean;
     query?: Partial<SongListQuery>;
     queryClient: QueryClient;
     serverId: string;
 }) => {
-    const { id, query, queryClient, serverId } = args;
+    const { forceRefresh = false, id, query, queryClient, serverId } = args;
 
     const queryFilter: SongListQuery = {
         albumIds: id,
@@ -87,7 +88,7 @@ export const getAlbumSongsById = async (args: {
                 query: queryFilter,
             }),
         queryKey,
-        staleTime: 1000 * 60,
+        staleTime: forceRefresh ? 0 : 1000 * 60,
     });
 
     return res;
