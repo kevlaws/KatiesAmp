@@ -12,9 +12,17 @@ import {
 } from 'react';
 
 import { detectBpm, getCachedBpm, setCachedBpm } from '../dj-bpm';
+import {
+    analyzeDjWaveform,
+    type DjWaveformAnalysis,
+    getCachedDjWaveform,
+    setCachedDjWaveform,
+} from '../dj-waveform-analysis';
 import styles from './dj-mode-overlay.module.css';
+import { DjWaveform } from './dj-waveform';
 
 import { ItemImage } from '/@/renderer/components/item-image/item-image';
+import { albumQueries } from '/@/renderer/features/albums/api/album-api';
 import { getSongUrl } from '/@/renderer/features/player/audio-player/hooks/use-stream-url';
 import { sharedQueries } from '/@/renderer/features/shared/api/shared-api';
 import { songsQueries } from '/@/renderer/features/songs/api/songs-api';
@@ -24,6 +32,7 @@ import { Icon } from '/@/shared/components/icon/icon';
 import { Select } from '/@/shared/components/select/select';
 import { TextInput } from '/@/shared/components/text-input/text-input';
 import {
+    AlbumListSort,
     LibraryItem,
     QueueSong,
     Song,
@@ -58,6 +67,8 @@ type MeterState = {
     level: number;
     limiting: boolean;
 };
+
+const ALL_TRACKS = '__all_tracks__';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -164,6 +175,7 @@ const Deck = ({
     const [pitchBend, setPitchBend] = useState(0);
     const [pitch, setPitch] = useState(0);
     const [pitchRange, setPitchRange] = useState<8 | 15>(8);
+    const [waveformAnalysis, setWaveformAnalysis] = useState<DjWaveformAnalysis>();
     const effectiveBpm = bpm ? Math.round(bpm * (1 + pitch / 100) * 10) / 10 : undefined;
     const playbackRate = 1 + (pitch + pitchBend) / 100;
     const syncPitch = getSyncPitch(bpm, otherBpm);
@@ -171,18 +183,13 @@ const Deck = ({
 
     const accent = deck === 'A' ? '#71d8bd' : '#e7b36a';
     const { wavesurfer } = useWavesurfer({
-        barGap: 2,
-        barRadius: 2,
-        barWidth: 2,
         container: waveformRef,
-        cursorColor: '#ffffff',
-        cursorWidth: 1,
-        height: 74,
-        interact: true,
+        cursorWidth: 0,
+        height: 1,
+        interact: false,
         media: audioRef.current,
-        normalize: true,
-        progressColor: accent,
-        waveColor: 'rgba(255, 255, 255, 0.22)',
+        progressColor: 'transparent',
+        waveColor: 'transparent',
     });
 
     useEffect(() => {
@@ -354,6 +361,7 @@ const Deck = ({
         setError('');
         setPitchBend(0);
         setPitch(0);
+        setWaveformAnalysis(undefined);
 
         if (!song) {
             setIsAnalyzingBpm(false);
@@ -364,7 +372,9 @@ const Deck = ({
 
         let cancelled = false;
         const knownBpm = getCachedBpm(song) || song.bpm || undefined;
+        const cachedWaveform = getCachedDjWaveform(song);
         setBpm(knownBpm);
+        setWaveformAnalysis(cachedWaveform);
         setIsAnalyzingBpm(!knownBpm);
         setIsLoading(true);
 
@@ -382,13 +392,20 @@ const Deck = ({
             .then(async (url) => {
                 if (cancelled) return;
                 await wavesurfer.load(url);
-                if (cancelled || knownBpm) return;
+                if (cancelled) return;
                 await new Promise((resolve) => window.setTimeout(resolve, 0));
                 const decoded = wavesurfer.getDecodedData();
-                const detectedBpm = decoded ? detectBpm(decoded) : undefined;
+                const detectedBpm = knownBpm || (decoded ? detectBpm(decoded) : undefined);
                 if (cancelled) return;
                 setBpm(detectedBpm);
-                if (detectedBpm) setCachedBpm(song, detectedBpm);
+                if (!knownBpm && detectedBpm) setCachedBpm(song, detectedBpm);
+                if (!cachedWaveform && decoded) {
+                    await new Promise((resolve) => window.setTimeout(resolve, 0));
+                    const analysis = analyzeDjWaveform(decoded, detectedBpm);
+                    if (cancelled) return;
+                    setWaveformAnalysis(analysis);
+                    setCachedDjWaveform(song, analysis);
+                }
             })
             .catch((loadError) => {
                 if (cancelled || (loadError instanceof Error && loadError.name === 'AbortError')) {
@@ -543,27 +560,32 @@ const Deck = ({
 
                         <div className={styles.timeRow}>
                             <span>{formatTime(currentTime)}</span>
-                            <input
-                                aria-label={`Deck ${deck} position`}
-                                disabled={!duration}
-                                max={duration || 1}
-                                min={0}
-                                onChange={(event) => {
-                                    audioRef.current.currentTime = Number(
-                                        event.currentTarget.value,
-                                    );
-                                }}
-                                step={0.1}
-                                type="range"
-                                value={Math.min(currentTime, duration || 0)}
-                            />
+                            <span
+                                aria-label="Frequency colours: treble blue, mids green, bass red"
+                                className={styles.frequencyLegend}
+                            >
+                                <b data-killed={eqKills.high}>Treble</b>
+                                <b data-killed={eqKills.mid}>Mid</b>
+                                <b data-killed={eqKills.low}>Bass</b>
+                            </span>
                             <span>{formatTime(duration)}</span>
                         </div>
-                        <div
-                            aria-label={`Deck ${deck} waveform`}
-                            className={styles.waveform}
-                            ref={waveformRef}
+                        <DjWaveform
+                            accent={accent}
+                            analysis={waveformAnalysis}
+                            audio={audioRef.current}
+                            bpm={bpm}
+                            currentTime={currentTime}
+                            deck={deck}
+                            duration={duration}
+                            eqKills={eqKills}
+                            isPlaying={isPlaying}
+                            onSeek={(time) => {
+                                audioRef.current.currentTime = time;
+                                setCurrentTime(time);
+                            }}
                         />
+                        <div aria-hidden className={styles.waveformDecoder} ref={waveformRef} />
                     </div>
                     <div className={styles.pitchControls}>
                         <div className={styles.pitchFader}>
@@ -854,6 +876,7 @@ export const DjModeOverlay = () => {
     const [deckA, setDeckA] = useState<Song>();
     const [deckB, setDeckB] = useState<Song>();
     const [deckBpms, setDeckBpms] = useState<Partial<Record<DeckId, number>>>({});
+    const [djAlbumId, setDjAlbumId] = useState(ALL_TRACKS);
     const [djMusicFolderId, setDjMusicFolderId] = useState(currentServer?.musicFolderId?.[0]);
     const [draggedPreparedIndex, setDraggedPreparedIndex] = useState<number>();
     const [draggedSong, setDraggedSong] = useState<Song>();
@@ -880,6 +903,20 @@ export const DjModeOverlay = () => {
             : { enabled: false, queryKey: ['disabled', 'dj-music-folders'] },
     );
     const musicFolders = musicFoldersQuery.data;
+    const albumsQuery = useQuery(
+        albumQueries.list({
+            options: { enabled: Boolean(currentServer?.id && djMusicFolderId) },
+            query: {
+                limit: 100,
+                musicFolderId: djMusicFolderId,
+                sortBy: AlbumListSort.NAME,
+                sortOrder: SortOrder.ASC,
+                startIndex: 0,
+            },
+            serverId: currentServer?.id || '',
+        }),
+    );
+    const albums = albumsQuery.data?.items;
 
     useEffect(() => {
         const context = new AudioContext({ latencyHint: 'interactive' });
@@ -954,10 +991,16 @@ export const DjModeOverlay = () => {
         });
     }, [currentServer?.musicFolderId, musicFolders]);
 
+    useEffect(() => {
+        if (djAlbumId === ALL_TRACKS || albumsQuery.isLoading) return;
+        if (!albums?.some((album) => album.id === djAlbumId)) setDjAlbumId(ALL_TRACKS);
+    }, [albums, albumsQuery.isLoading, djAlbumId]);
+
     const songsQuery = useQuery(
         songsQueries.list({
             options: { enabled: Boolean(currentServer?.id && djMusicFolderId) },
             query: {
+                albumIds: djAlbumId === ALL_TRACKS ? undefined : [djAlbumId],
                 limit: 200,
                 musicFolderId: djMusicFolderId,
                 searchTerm: deferredSearch || undefined,
@@ -1128,7 +1171,10 @@ export const DjModeOverlay = () => {
                                     !musicFolders?.items.length
                                 }
                                 onChange={(value) => {
-                                    if (value) setDjMusicFolderId(value);
+                                    if (value) {
+                                        setDjAlbumId(ALL_TRACKS);
+                                        setDjMusicFolderId(value);
+                                    }
                                 }}
                                 placeholder={
                                     musicFoldersQuery.isLoading
@@ -1161,13 +1207,36 @@ export const DjModeOverlay = () => {
                                 <span className={styles.kicker}>Music library</span>
                                 <h2>Tracks</h2>
                             </div>
-                            <TextInput
-                                aria-label="Search DJ tracks"
-                                leftSection={<Icon icon="search" />}
-                                onChange={(event) => setSearch(event.currentTarget.value)}
-                                placeholder="Search tracks or artists"
-                                value={search}
-                            />
+                            <div className={styles.browserFilters}>
+                                <Select
+                                    aria-label="Filter DJ library by album"
+                                    data={[
+                                        { label: 'All tracks', value: ALL_TRACKS },
+                                        ...(albums || []).map((album) => ({
+                                            label: album.name,
+                                            value: album.id,
+                                        })),
+                                    ]}
+                                    disabled={albumsQuery.isLoading || albumsQuery.isError}
+                                    onChange={(value) => setDjAlbumId(value || ALL_TRACKS)}
+                                    placeholder={
+                                        albumsQuery.isLoading
+                                            ? 'Loading albums…'
+                                            : albumsQuery.isError
+                                              ? 'Albums unavailable'
+                                              : 'Choose an album'
+                                    }
+                                    value={djAlbumId}
+                                    width="100%"
+                                />
+                                <TextInput
+                                    aria-label="Search DJ tracks"
+                                    leftSection={<Icon icon="search" />}
+                                    onChange={(event) => setSearch(event.currentTarget.value)}
+                                    placeholder="Search tracks or artists"
+                                    value={search}
+                                />
+                            </div>
                         </div>
                         <div className={styles.trackHeader}>
                             <span>Track</span>

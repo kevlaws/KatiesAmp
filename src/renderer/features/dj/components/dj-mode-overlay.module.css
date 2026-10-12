@@ -165,7 +165,7 @@
 
 .deck-main {
     display: grid;
-    grid-template-rows: auto auto 74px;
+    grid-template-rows: auto auto auto;
     gap: 0.65rem;
     align-content: start;
     min-width: 0;
@@ -227,12 +227,13 @@
     color: rgb(255 255 255 / 58%);
 }
 
-.waveform {
-    min-height: 74px;
+.waveform-decoder {
+    position: absolute;
+    width: 1px;
+    height: 1px;
     overflow: hidden;
-    cursor: ew-resize;
-    background: rgb(0 0 0 / 16%);
-    border-radius: 0.55rem;
+    pointer-events: none;
+    opacity: 0;
 }
 
 .bpm-readout {
@@ -401,6 +402,39 @@
     font-size: 0.72rem;
     font-variant-numeric: tabular-nums;
     color: rgb(255 255 255 / 62%);
+}
+
+.time-row span:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.frequency-legend {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.56rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.frequency-legend b:nth-child(1) {
+    color: #45c8ff;
+}
+
+.frequency-legend b:nth-child(2) {
+    color: #55ef73;
+}
+
+.frequency-legend b:nth-child(3) {
+    color: #ff3b57;
+}
+
+.frequency-legend b[data-killed='true'] {
+    color: rgb(255 255 255 / 34%);
 }
 
 .time-row input,
@@ -755,6 +789,14 @@
     font-size: 1.15rem;
 }
 
+.browser-filters {
+    display: grid;
+    grid-template-columns: minmax(10rem, 14rem) minmax(12rem, 20rem);
+    gap: 0.6rem;
+    align-items: center;
+    width: min(100%, 35rem);
+}
+
 .track-header,
 .track-row {
     display: grid;
@@ -883,6 +925,16 @@
             'master master'
             'mixer-b deck-b';
         grid-template-columns: minmax(0, 1fr) 9rem;
+    }
+
+    .browser-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .browser-filters {
+        grid-template-columns: 1fr;
+        width: 100%;
     }
 
     .track-row {

@@ -26,6 +26,11 @@ test('@full configures and opens the separate password-protected DJ workspace', 
     await page.getByLabel('Confirm administrator password').fill(administratorPassword);
     await page.getByRole('button', { name: 'Set password and continue' }).click();
 
+    await expect(page.getByLabel('Enable DJ Mode')).toHaveCount(0);
+    const djSettingsTab = page.getByRole('tab', { exact: true, name: 'DJ Mode' });
+    await expect(djSettingsTab).toBeVisible();
+    await djSettingsTab.click();
+    await expect(djSettingsTab).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('button', { exact: true, name: 'Set DJ password' }).click();
     await page.getByRole('textbox', { exact: true, name: 'New DJ password' }).fill(djPassword);
     await page.getByRole('textbox', { name: 'Confirm new DJ password' }).fill(djPassword);
@@ -53,6 +58,31 @@ test('@full configures and opens the separate password-protected DJ workspace', 
     const djFolder = workspace.getByRole('combobox', { name: 'Select DJ music folder' });
     await expect(djFolder).toHaveValue("Katie O'Brien's Music");
     await expect(workspace.getByText('Automation Track 1', { exact: true })).toBeVisible();
+    const albumFilter = workspace.getByRole('combobox', {
+        name: 'Filter DJ library by album',
+    });
+    await expect(albumFilter).toHaveValue('All tracks');
+    await albumFilter.click();
+    await page.getByRole('option', { exact: true, name: 'Automation Album' }).click();
+    await expect(albumFilter).toHaveValue('Automation Album');
+    await expect(workspace.getByText('Automation Track 1', { exact: true })).toBeVisible();
+    await expect
+        .poll(() =>
+            mockJellyfin.state.requests.some((request) => {
+                const query = Object.fromEntries(
+                    Object.entries(request.query).map(([key, value]) => [key.toLowerCase(), value]),
+                );
+                return (
+                    request.pathname.toLowerCase() === '/users/test-user/items' &&
+                    query.includeitemtypes?.includes('Audio') &&
+                    query.parentid === 'album-1'
+                );
+            }),
+        )
+        .toBe(true);
+    await albumFilter.click();
+    await page.getByRole('option', { exact: true, name: 'All tracks' }).click();
+    await expect(albumFilter).toHaveValue('All tracks');
     const deckA = workspace.getByRole('region', { name: 'Deck A' });
     const deckAControls = workspace.getByRole('complementary', { name: 'Deck A controls' });
     const masterMixer = workspace.getByRole('region', { name: 'Master mixer' });
@@ -85,7 +115,7 @@ test('@full configures and opens the separate password-protected DJ workspace', 
     expect(masterMixerBox.x).toBeLessThan(deckBControlsBox.x);
     expect(deckBControlsBox.x).toBeLessThan(deckBBox.x);
     const positionBox = await deckA.getByLabel('Deck A position').boundingBox();
-    const waveformBox = await deckA.getByLabel('Deck A waveform').boundingBox();
+    const waveformBox = await deckA.getByLabel('Deck A waveform', { exact: true }).boundingBox();
     expect(positionBox).not.toBeNull();
     expect(waveformBox).not.toBeNull();
     expect(positionBox.y).toBeLessThan(waveformBox.y);
@@ -96,6 +126,26 @@ test('@full configures and opens the separate password-protected DJ workspace', 
         .first()
         .click();
     await expect(deckA).toContainText('Automation Track 1');
+    await expect(deckA.getByRole('button', { name: 'Deck A waveform zoom 4x' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+    );
+    await deckA.getByRole('button', { name: 'Deck A waveform zoom 8x' }).click();
+    await expect(deckA.getByRole('button', { name: 'Deck A waveform zoom 8x' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+    );
+    const deckAPosition = deckA.getByLabel('Deck A position');
+    await expect(deckAPosition).toBeEnabled();
+    await expect
+        .poll(() =>
+            page.evaluate(() => Boolean(window.localStorage.getItem('katiesamp-dj-waveform-v1'))),
+        )
+        .toBe(true);
+    const deckADuration = Number(await deckAPosition.getAttribute('max'));
+    await deckAPosition.fill(String(deckADuration - 5));
+    await expect(deckA.getByText(/Ending in \d+s/)).toBeVisible();
+    await deckAPosition.fill('0');
     const deckABpm = deckA.getByLabel('Deck A BPM');
     await expect(deckABpm).toHaveText(/^\d+\.\d BPM$/, { timeout: 20_000 });
     const detectedBpm = Number.parseFloat(await deckABpm.textContent());
@@ -185,9 +235,22 @@ test('@full configures and opens the separate password-protected DJ workspace', 
     await deckAControls.getByRole('button', { name: 'Reset Deck A channel volume' }).click();
     await expect(channelVolume).toHaveValue('1');
     const trebleKill = deckAControls.getByRole('button', { name: 'Deck A Treble kill' });
+    const frequencyLegend = deckA.getByLabel(
+        'Frequency colours: treble blue, mids green, bass red',
+    );
+    await expect(frequencyLegend.locator('b')).toHaveText(['Treble', 'Mid', 'Bass']);
+    await expect(frequencyLegend.getByText('Treble', { exact: true })).toHaveAttribute(
+        'data-killed',
+        'false',
+    );
     await expect(trebleKill).toHaveAttribute('aria-pressed', 'false');
     await trebleKill.click();
     await expect(trebleKill).toHaveAttribute('aria-pressed', 'true');
+    await expect(frequencyLegend.getByText('Treble', { exact: true })).toHaveAttribute(
+        'data-killed',
+        'true',
+    );
+    await expect(deckA.locator('[data-high-killed="true"]')).toHaveCount(1);
     await deckA.getByRole('button', { name: 'Eject Deck A' }).click();
     await expect(deckA).not.toContainText('Automation Track 1');
     await expect(deckA).toContainText('Not ready');

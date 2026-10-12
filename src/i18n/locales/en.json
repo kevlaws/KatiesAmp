@@ -728,6 +728,7 @@
         "setting": {
             "advanced": "Advanced",
             "analytics": "Analytics",
+            "djModeTab": "DJ Mode",
             "generalTab": "General",
             "hotkeysTab": "Hotkeys",
             "playbackTab": "Playback",

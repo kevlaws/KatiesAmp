@@ -2,6 +2,7 @@ import isElectron from 'is-electron';
 import { useTranslation } from 'react-i18next';
 
 import { AdvancedTab } from '/@/renderer/features/settings/components/advanced/advanced-tab';
+import { DjModeTab } from '/@/renderer/features/settings/components/dj-mode/dj-mode-tab';
 import { GeneralTab } from '/@/renderer/features/settings/components/general/general-tab';
 import { HotkeysTab } from '/@/renderer/features/settings/components/hotkeys/hotkeys-tab';
 import { PlaybackTab } from '/@/renderer/features/settings/components/playback/playback-tab';
@@ -29,6 +30,9 @@ export const SettingsContent = () => {
                     <Tabs.List>
                         <Tabs.Tab value="general">{t('page.setting.generalTab')}</Tabs.Tab>
                         <Tabs.Tab value="playback">{t('page.setting.playbackTab')}</Tabs.Tab>
+                        {isElectron() && (
+                            <Tabs.Tab value="djMode">{t('page.setting.djModeTab')}</Tabs.Tab>
+                        )}
                         <Tabs.Tab value="hotkeys">{t('page.setting.hotkeysTab')}</Tabs.Tab>
                         {isElectron() && (
                             <Tabs.Tab value="window">{t('page.setting.windowTab')}</Tabs.Tab>
@@ -41,6 +45,11 @@ export const SettingsContent = () => {
                     <Tabs.Panel value="playback">
                         <PlaybackTab />
                     </Tabs.Panel>
+                    {isElectron() && (
+                        <Tabs.Panel value="djMode">
+                            <DjModeTab />
+                        </Tabs.Panel>
+                    )}
                     <Tabs.Panel value="hotkeys">
                         <HotkeysTab />
                     </Tabs.Panel>

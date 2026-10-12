@@ -17,7 +17,7 @@
 ## KatiesAmp V2 DJ backlog
 
 - [ ] Restore manual half-BPM and double-BPM correction controls for deck analysis.
-- [ ] Add improved scrolling waveforms with beat markers, an overview, frequency colours, end warnings, seeking, and zoom.
+- [x] Add improved scrolling waveforms with beat markers, an overview, frequency colours, end warnings, seeking, and zoom.
 - [ ] Add persistent hot cues and automatic beat-length loops with halve and double controls.
 - [ ] Add headphone cueing with separate master and headphone devices, headphone volume, and Cue/Master blend.
 - [ ] Add a focused per-deck effects section with echo, reverb, flanger, filters, brake, and wet/dry control.
