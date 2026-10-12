@@ -6,7 +6,7 @@ const ONE_PIXEL_PNG = Buffer.from(
     'base64',
 );
 
-const makeWave = (durationSeconds = 12, amplitude = 4_000, frequency = 220) => {
+const makeWave = (durationSeconds = 12, amplitude = 4_000, frequency = 220, bpm = 120) => {
     const sampleRate = 8_000;
     const sampleCount = sampleRate * durationSeconds;
     const dataSize = sampleCount * 2;
@@ -26,7 +26,10 @@ const makeWave = (durationSeconds = 12, amplitude = 4_000, frequency = 220) => {
     buffer.writeUInt32LE(dataSize, 40);
 
     for (let index = 0; index < sampleCount; index += 1) {
-        const sample = Math.sin((index / sampleRate) * Math.PI * 2 * frequency) * amplitude;
+        const seconds = index / sampleRate;
+        const beatPhase = seconds % (60 / bpm);
+        const beatEnvelope = 0.8 + 0.2 * Math.exp(-beatPhase * 18);
+        const sample = Math.sin(seconds * Math.PI * 2 * frequency) * amplitude * beatEnvelope;
         buffer.writeInt16LE(sample, 44 + index * 2);
     }
 
@@ -211,9 +214,9 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
     };
     state.playlistSongIds = state.library.songs.map((song) => song.Id);
     const audioFixtures = [
-        makeWave(12, 1_000, 220),
-        makeWave(12, 20_000, 250),
-        makeWave(12, 4_000, 280),
+        makeWave(12, 1_000, 220, 120),
+        makeWave(12, 20_000, 250, 125),
+        makeWave(12, 4_000, 280, 128),
     ];
     const audioBySongId = new Map(
         state.library.songs.map((song, index) => [song.Id, audioFixtures[Math.min(index, 2)]]),

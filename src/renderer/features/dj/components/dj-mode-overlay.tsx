@@ -11,6 +11,7 @@ import {
     useState,
 } from 'react';
 
+import { detectBpm, getCachedBpm, setCachedBpm } from '../dj-bpm';
 import styles from './dj-mode-overlay.module.css';
 
 import { ItemImage } from '/@/renderer/components/item-image/item-image';
@@ -31,7 +32,10 @@ import {
 } from '/@/shared/types/domain-types';
 
 type DeckGraph = {
+    analyser: AnalyserNode;
+    channel: GainNode;
     context: AudioContext;
+    filter: BiquadFilterNode;
     high: BiquadFilterNode;
     input: GainNode;
     limiter: DynamicsCompressorNode;
@@ -42,7 +46,28 @@ type DeckGraph = {
 
 type DeckId = 'A' | 'B';
 
+type MasterGraph = {
+    analyser: AnalyserNode;
+    context: AudioContext;
+    input: GainNode;
+    limiter: DynamicsCompressorNode;
+    output: GainNode;
+};
+
+type MeterState = {
+    level: number;
+    limiting: boolean;
+};
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const getSyncPitch = (bpm?: number, otherBpm?: number) => {
+    if (!bpm || !otherBpm) return undefined;
+
+    return [otherBpm / 2, otherBpm, otherBpm * 2]
+        .map((targetBpm) => (targetBpm / bpm - 1) * 100)
+        .sort((left, right) => Math.abs(left) - Math.abs(right))[0];
+};
 
 const equalPowerMix = (crossfader: number) => {
     const position = (clamp(crossfader, -1, 1) + 1) / 2;
@@ -50,6 +75,25 @@ const equalPowerMix = (crossfader: number) => {
         a: Math.cos(position * (Math.PI / 2)),
         b: Math.sin(position * (Math.PI / 2)),
     };
+};
+
+const configureLimiter = (limiter: DynamicsCompressorNode) => {
+    limiter.threshold.value = -1;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+};
+
+const readPeak = (analyser: AnalyserNode, samples: Uint8Array<ArrayBuffer>) => {
+    analyser.getByteTimeDomainData(samples);
+    let peak = 0;
+
+    for (const sample of samples) {
+        peak = Math.max(peak, Math.abs(sample - 128) / 128);
+    }
+
+    return peak;
 };
 
 const formatTime = (seconds: number) =>
@@ -60,32 +104,70 @@ const toQueueSong = (song: Song, deck: DeckId): QueueSong => ({
     _uniqueId: `dj-${deck}-${song.id}`,
 });
 
+const LevelMeter = ({ label, meter }: { label: string; meter: MeterState }) => (
+    <div className={styles.levelMeterGroup}>
+        <div
+            aria-label={label}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={Math.round(meter.level * 100)}
+            className={styles.levelMeter}
+            role="meter"
+        >
+            <span
+                className={styles.levelMeterFill}
+                style={{ width: `${Math.min(100, meter.level * 100)}%` }}
+            />
+        </div>
+        <span className={`${styles.clipIndicator} ${meter.limiting ? styles.isClipping : ''}`}>
+            {meter.limiting ? 'CLIP' : 'OK'}
+        </span>
+    </div>
+);
+
 const Deck = ({
     deck,
-    master,
     mix,
+    mixer,
+    onBpmChange,
     onDropSong,
     onEject,
+    otherBpm,
     song,
 }: {
     deck: DeckId;
-    master: number;
     mix: number;
+    mixer?: MasterGraph;
+    onBpmChange: (deck: DeckId, bpm?: number) => void;
     onDropSong: () => void;
     onEject: () => void;
+    otherBpm?: number;
     song?: Song;
 }) => {
     const { transcode } = usePlaybackSettings();
     const audioRef = useRef<HTMLAudioElement>(document.createElement('audio'));
     const graphRef = useRef<DeckGraph | undefined>(undefined);
     const waveformRef = useRef<HTMLDivElement>(null);
+    const [bpm, setBpm] = useState<number>();
+    const [channelVolume, setChannelVolume] = useState(1);
     const [currentTime, setCurrentTime] = useState(0);
     const [deckGain, setDeckGain] = useState(1);
     const [duration, setDuration] = useState(0);
     const [eq, setEq] = useState({ high: 0, low: 0, mid: 0 });
+    const [eqKills, setEqKills] = useState({ high: false, low: false, mid: false });
     const [error, setError] = useState('');
+    const [filterValue, setFilterValue] = useState(0);
+    const [isAnalyzingBpm, setIsAnalyzingBpm] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [meter, setMeter] = useState<MeterState>({ level: 0, limiting: false });
+    const [pitchBend, setPitchBend] = useState(0);
+    const [pitch, setPitch] = useState(0);
+    const [pitchRange, setPitchRange] = useState<8 | 15>(8);
+    const effectiveBpm = bpm ? Math.round(bpm * (1 + pitch / 100) * 10) / 10 : undefined;
+    const playbackRate = 1 + (pitch + pitchBend) / 100;
+    const syncPitch = getSyncPitch(bpm, otherBpm);
+    const canSync = syncPitch !== undefined;
 
     const accent = deck === 'A' ? '#71d8bd' : '#e7b36a';
     const { wavesurfer } = useWavesurfer({
@@ -104,16 +186,21 @@ const Deck = ({
     });
 
     useEffect(() => {
+        if (!mixer) return;
+
         const audio = audioRef.current;
         audio.crossOrigin = 'anonymous';
         audio.preload = 'auto';
 
-        const context = new AudioContext({ latencyHint: 'interactive' });
+        const { context } = mixer;
         const source = context.createMediaElementSource(audio);
         const input = context.createGain();
         const low = context.createBiquadFilter();
         const mid = context.createBiquadFilter();
         const high = context.createBiquadFilter();
+        const filter = context.createBiquadFilter();
+        const channel = context.createGain();
+        const analyser = context.createAnalyser();
         const limiter = context.createDynamicsCompressor();
         const output = context.createGain();
 
@@ -124,28 +211,77 @@ const Deck = ({
         mid.Q.value = 1;
         high.type = 'highshelf';
         high.frequency.value = 4_000;
-        limiter.threshold.value = -1;
-        limiter.knee.value = 0;
-        limiter.ratio.value = 20;
-        limiter.attack.value = 0.003;
-        limiter.release.value = 0.1;
+        filter.type = 'allpass';
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.72;
+        configureLimiter(limiter);
 
         source.connect(input);
         input.connect(low);
         low.connect(mid);
         mid.connect(high);
-        high.connect(limiter);
+        high.connect(filter);
+        filter.connect(channel);
+        channel.connect(analyser);
+        analyser.connect(limiter);
         limiter.connect(output);
-        output.connect(context.destination);
-        graphRef.current = { context, high, input, limiter, low, mid, output };
+        output.connect(mixer.input);
+        graphRef.current = {
+            analyser,
+            channel,
+            context,
+            filter,
+            high,
+            input,
+            limiter,
+            low,
+            mid,
+            output,
+        };
+
+        const samples = new Uint8Array(analyser.fftSize);
+        let animationFrame = 0;
+        let lastUpdate = 0;
+        const updateMeter = (time: number) => {
+            if (time - lastUpdate >= 50) {
+                const level = readPeak(analyser, samples);
+                const nextMeter = {
+                    level,
+                    limiting:
+                        level > 0.01 &&
+                        Number.isFinite(limiter.reduction) &&
+                        limiter.reduction < -0.25,
+                };
+                setMeter((current) =>
+                    Math.abs(current.level - nextMeter.level) < 0.005 &&
+                    current.limiting === nextMeter.limiting
+                        ? current
+                        : nextMeter,
+                );
+                lastUpdate = time;
+            }
+            animationFrame = window.requestAnimationFrame(updateMeter);
+        };
+        animationFrame = window.requestAnimationFrame(updateMeter);
 
         return () => {
+            window.cancelAnimationFrame(animationFrame);
             audio.pause();
             audio.removeAttribute('src');
+            source.disconnect();
+            input.disconnect();
+            low.disconnect();
+            mid.disconnect();
+            high.disconnect();
+            filter.disconnect();
+            channel.disconnect();
+            analyser.disconnect();
+            limiter.disconnect();
+            output.disconnect();
             graphRef.current = undefined;
-            void context.close().catch(() => {});
+            setMeter({ level: 0, limiting: false });
         };
-    }, []);
+    }, [mixer]);
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -176,28 +312,60 @@ const Deck = ({
         if (!graph) return;
         const now = graph.context.currentTime;
         graph.input.gain.setTargetAtTime(deckGain, now, 0.01);
-        graph.low.gain.setTargetAtTime(eq.low, now, 0.01);
-        graph.mid.gain.setTargetAtTime(eq.mid, now, 0.01);
-        graph.high.gain.setTargetAtTime(eq.high, now, 0.01);
-        graph.output.gain.setTargetAtTime(clamp(mix * master, 0, 1), now, 0.01);
-    }, [deckGain, eq, master, mix]);
+        graph.low.gain.setTargetAtTime(eqKills.low ? -30 : eq.low, now, 0.01);
+        graph.mid.gain.setTargetAtTime(eqKills.mid ? -30 : eq.mid, now, 0.01);
+        graph.high.gain.setTargetAtTime(eqKills.high ? -30 : eq.high, now, 0.01);
+        graph.channel.gain.setTargetAtTime(channelVolume, now, 0.01);
+        graph.output.gain.setTargetAtTime(clamp(mix, 0, 1), now, 0.01);
+
+        if (Math.abs(filterValue) < 0.01) {
+            graph.filter.type = 'allpass';
+        } else if (filterValue < 0) {
+            graph.filter.type = 'lowpass';
+            graph.filter.frequency.setTargetAtTime(
+                20_000 * Math.pow(0.01, Math.abs(filterValue)),
+                now,
+                0.01,
+            );
+        } else {
+            graph.filter.type = 'highpass';
+            graph.filter.frequency.setTargetAtTime(20 * Math.pow(250, filterValue), now, 0.01);
+        }
+    }, [channelVolume, deckGain, eq, eqKills, filterValue, mix]);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        audio.preservesPitch = true;
+        audio.playbackRate = playbackRate;
+    }, [playbackRate]);
+
+    useEffect(() => {
+        onBpmChange(deck, effectiveBpm);
+    }, [deck, effectiveBpm, onBpmChange]);
 
     useEffect(() => {
         if (!wavesurfer) return;
 
         const audio = audioRef.current;
         audio.pause();
+        setBpm(undefined);
         setCurrentTime(0);
         setDuration(0);
         setError('');
+        setPitchBend(0);
+        setPitch(0);
 
         if (!song) {
+            setIsAnalyzingBpm(false);
             setIsLoading(false);
             wavesurfer.empty();
             return;
         }
 
         let cancelled = false;
+        const knownBpm = getCachedBpm(song) || song.bpm || undefined;
+        setBpm(knownBpm);
+        setIsAnalyzingBpm(!knownBpm);
         setIsLoading(true);
 
         void getSongUrl(
@@ -214,6 +382,13 @@ const Deck = ({
             .then(async (url) => {
                 if (cancelled) return;
                 await wavesurfer.load(url);
+                if (cancelled || knownBpm) return;
+                await new Promise((resolve) => window.setTimeout(resolve, 0));
+                const decoded = wavesurfer.getDecodedData();
+                const detectedBpm = decoded ? detectBpm(decoded) : undefined;
+                if (cancelled) return;
+                setBpm(detectedBpm);
+                if (detectedBpm) setCachedBpm(song, detectedBpm);
             })
             .catch((loadError) => {
                 if (cancelled || (loadError instanceof Error && loadError.name === 'AbortError')) {
@@ -222,7 +397,10 @@ const Deck = ({
                 setError('Unable to load this track');
             })
             .finally(() => {
-                if (!cancelled) setIsLoading(false);
+                if (!cancelled) {
+                    setIsAnalyzingBpm(false);
+                    setIsLoading(false);
+                }
             });
 
         return () => {
@@ -248,6 +426,16 @@ const Deck = ({
         audio.pause();
         audio.currentTime = 0;
         setCurrentTime(0);
+    };
+
+    const matchOtherDeck = () => {
+        if (syncPitch === undefined) return;
+        setPitch(Math.round(clamp(syncPitch, -pitchRange, pitchRange) * 10) / 10);
+    };
+
+    const selectPitchRange = (nextRange: 8 | 15) => {
+        setPitchRange(nextRange);
+        setPitch((currentPitch) => clamp(currentPitch, -nextRange, nextRange));
     };
 
     const handleDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -289,6 +477,19 @@ const Deck = ({
                                         : 'Ready')}
                         </span>
                         <div className={styles.transport}>
+                            <Button
+                                disabled={!canSync}
+                                onClick={matchOtherDeck}
+                                size="sm"
+                                title={
+                                    canSync
+                                        ? 'Match this deck to the other deck'
+                                        : 'Load and analyse both decks to enable BPM sync'
+                                }
+                                variant="default"
+                            >
+                                Sync BPM
+                            </Button>
                             <Button disabled={!song} onClick={cue} size="sm" variant="default">
                                 Cue
                             </Button>
@@ -304,50 +505,157 @@ const Deck = ({
                     </div>
                 </header>
 
-                <div className={styles.deckMain}>
-                    <div className={styles.deckTrack}>
-                        <div className={styles.artwork}>
-                            {song ? (
-                                <ItemImage
-                                    alt=""
-                                    id={song.id}
-                                    itemType={LibraryItem.SONG}
-                                    serverId={song._serverId}
-                                    src={song.imageUrl}
-                                    type="itemCard"
-                                />
-                            ) : (
-                                <Icon icon="disc" size="3xl" />
-                            )}
+                <div className={styles.deckBody}>
+                    <div className={styles.deckMain}>
+                        <div className={styles.deckTrack}>
+                            <div className={styles.artworkStack}>
+                                <div aria-label={`Deck ${deck} artwork`} className={styles.artwork}>
+                                    {song ? (
+                                        <ItemImage
+                                            alt=""
+                                            id={song.id}
+                                            itemType={LibraryItem.SONG}
+                                            serverId={song._serverId}
+                                            src={song.imageUrl}
+                                            type="itemCard"
+                                        />
+                                    ) : (
+                                        <Icon icon="disc" size="3xl" />
+                                    )}
+                                </div>
+                                <output
+                                    aria-label={`Deck ${deck} BPM`}
+                                    className={styles.bpmReadout}
+                                >
+                                    {bpm
+                                        ? `${effectiveBpm?.toFixed(1)} BPM`
+                                        : isAnalyzingBpm
+                                          ? 'BPM…'
+                                          : 'No BPM'}
+                                </output>
+                            </div>
+                            <div className={styles.trackCopy}>
+                                <strong>{song?.name || `Drop a track onto Deck ${deck}`}</strong>
+                                <span>{song?.artistName || 'No track loaded'}</span>
+                                <span>{song?.album || ' '}</span>
+                            </div>
                         </div>
-                        <div className={styles.trackCopy}>
-                            <strong>{song?.name || `Drop a track onto Deck ${deck}`}</strong>
-                            <span>{song?.artistName || 'No track loaded'}</span>
-                            <span>{song?.album || ' '}</span>
-                        </div>
-                    </div>
 
-                    <div className={styles.timeRow}>
-                        <span>{formatTime(currentTime)}</span>
-                        <input
-                            aria-label={`Deck ${deck} position`}
-                            disabled={!duration}
-                            max={duration || 1}
-                            min={0}
-                            onChange={(event) => {
-                                audioRef.current.currentTime = Number(event.currentTarget.value);
-                            }}
-                            step={0.1}
-                            type="range"
-                            value={Math.min(currentTime, duration || 0)}
+                        <div className={styles.timeRow}>
+                            <span>{formatTime(currentTime)}</span>
+                            <input
+                                aria-label={`Deck ${deck} position`}
+                                disabled={!duration}
+                                max={duration || 1}
+                                min={0}
+                                onChange={(event) => {
+                                    audioRef.current.currentTime = Number(
+                                        event.currentTarget.value,
+                                    );
+                                }}
+                                step={0.1}
+                                type="range"
+                                value={Math.min(currentTime, duration || 0)}
+                            />
+                            <span>{formatTime(duration)}</span>
+                        </div>
+                        <div
+                            aria-label={`Deck ${deck} waveform`}
+                            className={styles.waveform}
+                            ref={waveformRef}
                         />
-                        <span>{formatTime(duration)}</span>
                     </div>
-                    <div
-                        aria-label={`Deck ${deck} waveform`}
-                        className={styles.waveform}
-                        ref={waveformRef}
-                    />
+                    <div className={styles.pitchControls}>
+                        <div className={styles.pitchFader}>
+                            <span>Pitch</span>
+                            <output>{`${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}%`}</output>
+                            <div className={styles.pitchSliderArea}>
+                                <input
+                                    aria-label={`Deck ${deck} pitch`}
+                                    disabled={!song}
+                                    max={pitchRange}
+                                    min={-pitchRange}
+                                    onChange={(event) =>
+                                        setPitch(Number(event.currentTarget.value))
+                                    }
+                                    step={0.1}
+                                    type="range"
+                                    value={pitch}
+                                />
+                                <button
+                                    aria-label={`Deck ${deck} centre pitch`}
+                                    className={styles.pitchCentreButton}
+                                    disabled={!song}
+                                    onClick={() => setPitch(0)}
+                                    title="Centre pitch"
+                                    type="button"
+                                >
+                                    0
+                                </button>
+                            </div>
+                            <div className={styles.pitchRangeActions}>
+                                <button
+                                    aria-label={`Deck ${deck} use 8 percent pitch range`}
+                                    aria-pressed={pitchRange === 8}
+                                    onClick={() => selectPitchRange(8)}
+                                    title="Use ±8% pitch range"
+                                    type="button"
+                                >
+                                    ±8
+                                </button>
+                                <button
+                                    aria-label={`Deck ${deck} use 15 percent pitch range`}
+                                    aria-pressed={pitchRange === 15}
+                                    onClick={() => selectPitchRange(15)}
+                                    title="Use ±15% pitch range"
+                                    type="button"
+                                >
+                                    ±15
+                                </button>
+                            </div>
+                        </div>
+                        <div className={styles.bendControls}>
+                            <span>Bend</span>
+                            <div className={styles.bendActions}>
+                                <button
+                                    aria-label={`Deck ${deck} pitch bend down`}
+                                    aria-pressed={pitchBend < 0}
+                                    disabled={!song}
+                                    onBlur={() => setPitchBend(0)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === ' ' || event.key === 'Enter')
+                                            setPitchBend(-2);
+                                    }}
+                                    onKeyUp={() => setPitchBend(0)}
+                                    onPointerCancel={() => setPitchBend(0)}
+                                    onPointerDown={() => setPitchBend(-2)}
+                                    onPointerLeave={() => setPitchBend(0)}
+                                    onPointerUp={() => setPitchBend(0)}
+                                    type="button"
+                                >
+                                    −
+                                </button>
+                                <button
+                                    aria-label={`Deck ${deck} pitch bend up`}
+                                    aria-pressed={pitchBend > 0}
+                                    disabled={!song}
+                                    onBlur={() => setPitchBend(0)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === ' ' || event.key === 'Enter')
+                                            setPitchBend(2);
+                                    }}
+                                    onKeyUp={() => setPitchBend(0)}
+                                    onPointerCancel={() => setPitchBend(0)}
+                                    onPointerDown={() => setPitchBend(2)}
+                                    onPointerLeave={() => setPitchBend(0)}
+                                    onPointerUp={() => setPitchBend(0)}
+                                    type="button"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
             <aside
@@ -357,50 +665,103 @@ const Deck = ({
             >
                 <span className={styles.mixerDeckLabel}>{deck}</span>
                 <div className={styles.deckMixerControls}>
-                    <RotaryDial
-                        ariaLabel={`Deck ${deck} Gain`}
-                        label="Gain"
-                        max={1.25}
-                        min={0}
-                        onChange={setDeckGain}
-                        resetValue={1}
-                        step={0.01}
-                        value={deckGain}
-                        valueLabel={`${Math.round(deckGain * 100)}%`}
-                    />
-                    <RotaryDial
-                        ariaLabel={`Deck ${deck} Treble`}
-                        label="Treble"
-                        max={12}
-                        min={-12}
-                        onChange={(high) => setEq((current) => ({ ...current, high }))}
-                        resetValue={0}
-                        step={1}
-                        value={eq.high}
-                        valueLabel={`${eq.high} dB`}
-                    />
-                    <RotaryDial
-                        ariaLabel={`Deck ${deck} Mid`}
-                        label="Mid"
-                        max={12}
-                        min={-12}
-                        onChange={(mid) => setEq((current) => ({ ...current, mid }))}
-                        resetValue={0}
-                        step={1}
-                        value={eq.mid}
-                        valueLabel={`${eq.mid} dB`}
-                    />
-                    <RotaryDial
-                        ariaLabel={`Deck ${deck} Bass`}
-                        label="Bass"
-                        max={12}
-                        min={-12}
-                        onChange={(low) => setEq((current) => ({ ...current, low }))}
-                        resetValue={0}
-                        step={1}
-                        value={eq.low}
-                        valueLabel={`${eq.low} dB`}
-                    />
+                    <div className={styles.trimControls}>
+                        <RotaryDial
+                            ariaLabel={`Deck ${deck} Gain`}
+                            label="Gain"
+                            max={1.25}
+                            min={0}
+                            onChange={setDeckGain}
+                            resetValue={1}
+                            step={0.01}
+                            value={deckGain}
+                            valueLabel={`${Math.round(deckGain * 100)}%`}
+                        />
+                        <RotaryDial
+                            ariaLabel={`Deck ${deck} Filter`}
+                            label="Filter"
+                            max={1}
+                            min={-1}
+                            onChange={setFilterValue}
+                            resetValue={0}
+                            step={0.01}
+                            value={filterValue}
+                            valueLabel={
+                                filterValue < -0.01
+                                    ? `LP ${Math.round(Math.abs(filterValue) * 100)}%`
+                                    : filterValue > 0.01
+                                      ? `HP ${Math.round(filterValue * 100)}%`
+                                      : 'Off'
+                            }
+                        />
+                    </div>
+                    <div className={styles.eqControls}>
+                        {(
+                            [
+                                ['Treble', 'high'],
+                                ['Mid', 'mid'],
+                                ['Bass', 'low'],
+                            ] as const
+                        ).map(([label, band]) => (
+                            <div className={styles.eqControl} key={band}>
+                                <RotaryDial
+                                    ariaLabel={`Deck ${deck} ${label}`}
+                                    label={label}
+                                    max={12}
+                                    min={-12}
+                                    onChange={(value) =>
+                                        setEq((current) => ({ ...current, [band]: value }))
+                                    }
+                                    resetValue={0}
+                                    step={1}
+                                    value={eq[band]}
+                                    valueLabel={`${eq[band]} dB`}
+                                />
+                                <button
+                                    aria-label={`Deck ${deck} ${label} kill`}
+                                    aria-pressed={eqKills[band]}
+                                    className={styles.killButton}
+                                    onClick={() =>
+                                        setEqKills((current) => ({
+                                            ...current,
+                                            [band]: !current[band],
+                                        }))
+                                    }
+                                    type="button"
+                                >
+                                    Kill
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className={styles.channelFaderGroup}>
+                        <label className={styles.channelFader}>
+                            <span>Channel volume</span>
+                            <output>{Math.round(channelVolume * 100)}%</output>
+                            <input
+                                aria-label={`Deck ${deck} channel volume`}
+                                max={1}
+                                min={0}
+                                onChange={(event) =>
+                                    setChannelVolume(Number(event.currentTarget.value))
+                                }
+                                onDoubleClick={() => setChannelVolume(1)}
+                                step={0.01}
+                                title="Double-click to restore full channel volume"
+                                type="range"
+                                value={channelVolume}
+                            />
+                        </label>
+                        <button
+                            aria-label={`Reset Deck ${deck} channel volume`}
+                            className={styles.channelReset}
+                            onClick={() => setChannelVolume(1)}
+                            type="button"
+                        >
+                            Reset
+                        </button>
+                    </div>
+                    <LevelMeter label={`Deck ${deck} output level`} meter={meter} />
                 </div>
             </aside>
         </>
@@ -488,22 +849,94 @@ const RotaryDial = ({
 export const DjModeOverlay = () => {
     const closeDjMode = useSetDjModeExpanded();
     const currentServer = useCurrentServer();
+    const [crossfadeEnabled, setCrossfadeEnabled] = useState(true);
     const [crossfader, setCrossfader] = useState(0);
     const [deckA, setDeckA] = useState<Song>();
     const [deckB, setDeckB] = useState<Song>();
+    const [deckBpms, setDeckBpms] = useState<Partial<Record<DeckId, number>>>({});
     const [djMusicFolderId, setDjMusicFolderId] = useState(currentServer?.musicFolderId?.[0]);
+    const [draggedPreparedIndex, setDraggedPreparedIndex] = useState<number>();
     const [draggedSong, setDraggedSong] = useState<Song>();
     const [master, setMaster] = useState(0.8);
+    const [masterMeter, setMasterMeter] = useState<MeterState>({
+        level: 0,
+        limiting: false,
+    });
+    const [mixer, setMixer] = useState<MasterGraph>();
     const [prepared, setPrepared] = useState<Song[]>([]);
+    const [preparedDropIndex, setPreparedDropIndex] = useState<number>();
     const [search, setSearch] = useState('');
     const deferredSearch = useDeferredValue(search.trim());
-    const mix = useMemo(() => equalPowerMix(crossfader), [crossfader]);
+    const mix = useMemo(
+        () => (crossfadeEnabled ? equalPowerMix(crossfader) : { a: 1, b: 1 }),
+        [crossfadeEnabled, crossfader],
+    );
+    const handleBpmChange = useCallback((deck: DeckId, bpm?: number) => {
+        setDeckBpms((current) => (current[deck] === bpm ? current : { ...current, [deck]: bpm }));
+    }, []);
     const musicFoldersQuery = useQuery(
         currentServer
             ? sharedQueries.musicFolders({ query: null, serverId: currentServer.id })
             : { enabled: false, queryKey: ['disabled', 'dj-music-folders'] },
     );
     const musicFolders = musicFoldersQuery.data;
+
+    useEffect(() => {
+        const context = new AudioContext({ latencyHint: 'interactive' });
+        const input = context.createGain();
+        const limiter = context.createDynamicsCompressor();
+        const output = context.createGain();
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.72;
+        configureLimiter(limiter);
+        input.connect(limiter);
+        limiter.connect(output);
+        output.connect(analyser);
+        analyser.connect(context.destination);
+
+        const graph = { analyser, context, input, limiter, output };
+        setMixer(graph);
+
+        const samples = new Uint8Array(analyser.fftSize);
+        let animationFrame = 0;
+        let lastUpdate = 0;
+        const updateMeter = (time: number) => {
+            if (time - lastUpdate >= 50) {
+                const level = readPeak(analyser, samples);
+                const nextMeter = {
+                    level,
+                    limiting:
+                        level > 0.01 &&
+                        Number.isFinite(limiter.reduction) &&
+                        limiter.reduction < -0.25,
+                };
+                setMasterMeter((current) =>
+                    Math.abs(current.level - nextMeter.level) < 0.005 &&
+                    current.limiting === nextMeter.limiting
+                        ? current
+                        : nextMeter,
+                );
+                lastUpdate = time;
+            }
+            animationFrame = window.requestAnimationFrame(updateMeter);
+        };
+        animationFrame = window.requestAnimationFrame(updateMeter);
+
+        return () => {
+            window.cancelAnimationFrame(animationFrame);
+            input.disconnect();
+            limiter.disconnect();
+            output.disconnect();
+            analyser.disconnect();
+            void context.close().catch(() => {});
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!mixer) return;
+        mixer.output.gain.setTargetAtTime(master, mixer.context.currentTime, 0.01);
+    }, [master, mixer]);
 
     useEffect(() => {
         if (!musicFolders) return;
@@ -558,15 +991,39 @@ export const DjModeOverlay = () => {
         );
     };
 
+    const clearDrag = () => {
+        setDraggedPreparedIndex(undefined);
+        setDraggedSong(undefined);
+        setPreparedDropIndex(undefined);
+    };
+
     const handleDrop = (deck: DeckId) => {
         if (!draggedSong) return;
         loadDeck(deck, draggedSong);
-        setDraggedSong(undefined);
+        clearDrag();
     };
 
-    const startDrag = (event: DragEvent, song: Song) => {
-        event.dataTransfer.effectAllowed = 'copy';
+    const handlePreparedDrop = (event: DragEvent, targetIndex: number) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!draggedSong) return;
+
+        setPrepared((current) => {
+            const next = [...current];
+            const existingIndex = next.findIndex((song) => song.id === draggedSong.id);
+            const sourceIndex = draggedPreparedIndex ?? existingIndex;
+            const [song] = sourceIndex >= 0 ? next.splice(sourceIndex, 1) : [draggedSong];
+            const insertionIndex = clamp(targetIndex, 0, next.length);
+            next.splice(insertionIndex, 0, song);
+            return next;
+        });
+        clearDrag();
+    };
+
+    const startDrag = (event: DragEvent, song: Song, preparedIndex?: number) => {
+        event.dataTransfer.effectAllowed = preparedIndex === undefined ? 'copy' : 'copyMove';
         event.dataTransfer.setData('text/plain', song.id);
+        setDraggedPreparedIndex(preparedIndex);
         setDraggedSong(song);
     };
 
@@ -589,10 +1046,12 @@ export const DjModeOverlay = () => {
                 <div className={styles.decks}>
                     <Deck
                         deck="A"
-                        master={master}
                         mix={mix.a}
+                        mixer={mixer}
+                        onBpmChange={handleBpmChange}
                         onDropSong={() => handleDrop('A')}
                         onEject={() => setDeckA(undefined)}
+                        otherBpm={deckBpms.B}
                         song={deckA}
                     />
                     <section aria-label="Master mixer" className={styles.masterMixer}>
@@ -608,6 +1067,14 @@ export const DjModeOverlay = () => {
                             value={master}
                             valueLabel={`${Math.round(master * 100)}%`}
                         />
+                        <LevelMeter label="Master output level" meter={masterMeter} />
+                        <span
+                            className={`${styles.limiterStatus} ${
+                                masterMeter.limiting ? styles.isLimiting : ''
+                            }`}
+                        >
+                            {masterMeter.limiting ? 'Limiter active' : 'Limiter ready'}
+                        </span>
                         <label className={styles.crossfader}>
                             <span>Crossfader</span>
                             <div className={styles.crossfaderLabels}>
@@ -616,6 +1083,7 @@ export const DjModeOverlay = () => {
                             </div>
                             <input
                                 aria-label="Crossfader"
+                                disabled={!crossfadeEnabled}
                                 max={1}
                                 min={-1}
                                 onChange={(event) =>
@@ -626,9 +1094,24 @@ export const DjModeOverlay = () => {
                                 value={crossfader}
                             />
                         </label>
-                        <Button onClick={() => setCrossfader(0)} size="compact-xs" variant="subtle">
-                            Centre
-                        </Button>
+                        <div className={styles.crossfaderActions}>
+                            <Button
+                                className={styles.centreButton}
+                                onClick={() => setCrossfader(0)}
+                                size="compact-xs"
+                                variant="filled"
+                            >
+                                Centre crossfade
+                            </Button>
+                            <Button
+                                aria-pressed={!crossfadeEnabled}
+                                onClick={() => setCrossfadeEnabled((enabled) => !enabled)}
+                                size="compact-xs"
+                                variant={crossfadeEnabled ? 'default' : 'filled'}
+                            >
+                                {crossfadeEnabled ? 'Disable crossfade' : 'Enable crossfade'}
+                            </Button>
+                        </div>
                         <label className={styles.musicFolderSelector}>
                             <span>DJ music folder</span>
                             <Select
@@ -661,10 +1144,12 @@ export const DjModeOverlay = () => {
                     </section>
                     <Deck
                         deck="B"
-                        master={master}
                         mix={mix.b}
+                        mixer={mixer}
+                        onBpmChange={handleBpmChange}
                         onDropSong={() => handleDrop('B')}
                         onEject={() => setDeckB(undefined)}
+                        otherBpm={deckBpms.A}
                         song={deckB}
                     />
                 </div>
@@ -690,7 +1175,7 @@ export const DjModeOverlay = () => {
                             <span>Length</span>
                             <span>Load</span>
                         </div>
-                        <div className={styles.trackList}>
+                        <div aria-label="DJ track library" className={styles.trackList} role="list">
                             {songsQuery.isLoading && (
                                 <p className={styles.empty}>Loading tracks…</p>
                             )}
@@ -704,12 +1189,14 @@ export const DjModeOverlay = () => {
                             )}
                             {songs.map((song) => (
                                 <div
+                                    aria-label={`${song.name} library track`}
                                     className={styles.trackRow}
                                     draggable
                                     key={song.id}
                                     onDoubleClick={() => loadDeck(deckA ? 'B' : 'A', song)}
-                                    onDragEnd={() => setDraggedSong(undefined)}
+                                    onDragEnd={clearDrag}
                                     onDragStart={(event) => startDrag(event, song)}
+                                    role="listitem"
                                 >
                                     <div className={styles.trackIdentity}>
                                         <strong>{song.name}</strong>
@@ -753,19 +1240,43 @@ export const DjModeOverlay = () => {
                             </div>
                             <span className={styles.count}>{prepared.length}</span>
                         </div>
-                        <div className={styles.prepareList}>
+                        <div
+                            aria-label="Preparation list"
+                            className={`${styles.prepareList} ${
+                                draggedSong && preparedDropIndex === prepared.length
+                                    ? styles.prepareListDropTarget
+                                    : ''
+                            }`}
+                            onDragEnter={() => setPreparedDropIndex(prepared.length)}
+                            onDragOver={(event) => {
+                                event.preventDefault();
+                                setPreparedDropIndex(prepared.length);
+                            }}
+                            onDrop={(event) => handlePreparedDrop(event, prepared.length)}
+                            role="list"
+                        >
                             {prepared.length === 0 && (
                                 <p className={styles.empty}>
                                     Add tracks here while preparing your set.
                                 </p>
                             )}
-                            {prepared.map((song) => (
+                            {prepared.map((song, index) => (
                                 <div
-                                    className={styles.prepareRow}
+                                    aria-label={`${song.name} preparation track`}
+                                    className={`${styles.prepareRow} ${
+                                        preparedDropIndex === index ? styles.prepareDropTarget : ''
+                                    }`}
                                     draggable
                                     key={song.id}
-                                    onDragEnd={() => setDraggedSong(undefined)}
-                                    onDragStart={(event) => startDrag(event, song)}
+                                    onDragEnd={clearDrag}
+                                    onDragOver={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setPreparedDropIndex(index);
+                                    }}
+                                    onDragStart={(event) => startDrag(event, song, index)}
+                                    onDrop={(event) => handlePreparedDrop(event, index)}
+                                    role="listitem"
                                 >
                                     <div>
                                         <strong>{song.name}</strong>
