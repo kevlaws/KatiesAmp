@@ -63,6 +63,22 @@ const adminPasswordChange = async (
     return ipcRenderer.invoke('admin-password-change', currentPassword, newPassword);
 };
 
+const djPasswordIsSet = async (): Promise<boolean> => {
+    return ipcRenderer.invoke('dj-password-is-set');
+};
+
+const djPasswordSet = async (password: string): Promise<boolean> => {
+    return ipcRenderer.invoke('dj-password-set', password);
+};
+
+const djPasswordVerify = async (password: string): Promise<boolean> => {
+    return ipcRenderer.invoke('dj-password-verify', password);
+};
+
+const djPasswordChange = async (currentPassword: string, newPassword: string): Promise<boolean> => {
+    return ipcRenderer.invoke('dj-password-change', currentPassword, newPassword);
+};
+
 const setZoomFactor = (zoomFactor: number) => {
     webFrame.setZoomFactor(zoomFactor / 100);
 };
@@ -119,6 +135,10 @@ export const localSettings = {
     adminPasswordSet,
     adminPasswordVerify,
     disableMediaKeys,
+    djPasswordChange,
+    djPasswordIsSet,
+    djPasswordSet,
+    djPasswordVerify,
     enableMediaKeys,
     env,
     fontError,

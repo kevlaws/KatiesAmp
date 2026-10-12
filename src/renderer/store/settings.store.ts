@@ -23,10 +23,7 @@ import {
     PLAYLIST_TABLE_COLUMNS,
     SONG_TABLE_COLUMNS,
 } from '/@/renderer/components/item-list/item-table-list/default-columns';
-import {
-    migrateVolumeLevelingSettings,
-    VOLUME_LEVELING_MIGRATION_VERSION,
-} from '/@/renderer/features/player/audio-player/utils/volume-leveling';
+import { migrateVolumeLevelingSettings } from '/@/renderer/features/player/audio-player/utils/volume-leveling';
 import { audiomotionanalyzerPresets } from '/@/renderer/features/visualizer/components/audiomotionanalyzer/presets';
 import { AppRoute } from '/@/renderer/router/routes';
 import { KATIESAMP_DEFAULT_UI_SETTINGS } from '/@/renderer/store/default-ui-settings';
@@ -50,6 +47,7 @@ import {
 } from '/@/shared/types/types';
 import { IMAGE_PLACEHOLDER_PRIORITIES } from '/@/shared/utils/image-hash';
 
+const SETTINGS_STORE_VERSION = 38;
 const utils = isElectron() ? window.api.utils : null;
 
 const getDefaultListColumns = (columns: readonly string[]): TableColumn[] =>
@@ -542,6 +540,7 @@ export const GeneralSettingsSchema = z.object({
     combinedLyricsAndVisualizer: z.boolean(),
     confirmQueueChanges: z.boolean(),
     disabledContextMenu: z.record(z.string(), z.boolean()),
+    djModeEnabled: z.boolean(),
     enableGridMultiSelect: z.boolean(),
     externalLinks: z.boolean(),
     followCurrentSong: z.boolean(),
@@ -1378,6 +1377,7 @@ const initialState: SettingsState = {
             KATIESAMP_DEFAULT_UI_SETTINGS.general.combinedLyricsAndVisualizer,
         confirmQueueChanges: true,
         disabledContextMenu: {},
+        djModeEnabled: false,
         enableGridMultiSelect: false,
         externalLinks: KATIESAMP_DEFAULT_UI_SETTINGS.general.externalLinks,
         followCurrentSong: true,
@@ -2935,10 +2935,14 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
 
                 migrateVolumeLevelingSettings(state, version);
 
+                if (version < 38) {
+                    state.general.djModeEnabled = false;
+                }
+
                 return persistedState;
             },
             name: 'store_settings',
-            version: VOLUME_LEVELING_MIGRATION_VERSION,
+            version: SETTINGS_STORE_VERSION,
         },
     ),
 );
@@ -2951,6 +2955,8 @@ export const useTableSettings = (type: ItemListKey) =>
     useSettingsStore((state) => state.lists[type as keyof typeof state.lists]);
 
 export const useGeneralSettings = () => useSettingsStore((state) => state.general, shallow);
+
+export const useDjModeEnabled = () => useSettingsStore((state) => state.general.djModeEnabled);
 
 export const usePlaybackType = () => useSettingsStore((state) => state.playback.type, shallow);
 

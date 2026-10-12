@@ -133,32 +133,40 @@ export const store = new Store<any>({
 });
 
 const ADMIN_PASSWORD_KEY = 'admin_password';
-const ADMIN_PASSWORD_MIN_LENGTH = 6;
-const ADMIN_PASSWORD_MAX_LENGTH = 128;
+const DJ_PASSWORD_KEY = 'dj_password';
+const LOCAL_PASSWORD_MIN_LENGTH = 6;
+const LOCAL_PASSWORD_MAX_LENGTH = 128;
 
-type AdminPasswordRecord = {
+type LocalPasswordRecord = {
     hash: string;
     salt: string;
 };
 
-const isValidAdminPassword = (password: unknown): password is string =>
+const isValidLocalPassword = (password: unknown): password is string =>
     typeof password === 'string' &&
-    password.length >= ADMIN_PASSWORD_MIN_LENGTH &&
-    password.length <= ADMIN_PASSWORD_MAX_LENGTH;
+    password.length >= LOCAL_PASSWORD_MIN_LENGTH &&
+    password.length <= LOCAL_PASSWORD_MAX_LENGTH;
 
-const setAdminPassword = (password: string) => {
-    const salt = randomBytes(16);
-    const hash = scryptSync(password, salt, 32);
-    store.set(ADMIN_PASSWORD_KEY, {
-        hash: hash.toString('hex'),
-        salt: salt.toString('hex'),
-    } satisfies AdminPasswordRecord);
+const getLocalPasswordRecord = (key: string) => store.get(key) as LocalPasswordRecord | undefined;
+
+const isLocalPasswordSet = (key: string) => {
+    const record = getLocalPasswordRecord(key);
+    return Boolean(record?.hash && record.salt);
 };
 
-const verifyAdminPassword = (password: unknown) => {
-    if (!isValidAdminPassword(password)) return false;
+const setLocalPassword = (key: string, password: string) => {
+    const salt = randomBytes(16);
+    const hash = scryptSync(password, salt, 32);
+    store.set(key, {
+        hash: hash.toString('hex'),
+        salt: salt.toString('hex'),
+    } satisfies LocalPasswordRecord);
+};
 
-    const record = store.get(ADMIN_PASSWORD_KEY) as AdminPasswordRecord | undefined;
+const verifyLocalPassword = (key: string, password: unknown) => {
+    if (!isValidLocalPassword(password)) return false;
+
+    const record = getLocalPasswordRecord(key);
     if (!record?.hash || !record.salt) return false;
 
     try {
@@ -166,38 +174,65 @@ const verifyAdminPassword = (password: unknown) => {
         const actual = scryptSync(password, Buffer.from(record.salt, 'hex'), expected.length);
         return expected.length > 0 && timingSafeEqual(actual, expected);
     } catch (error) {
-        log.warn('Unable to verify administrator password', error);
+        log.warn('Unable to verify protected password', error);
         return false;
     }
 };
 
 ipcMain.handle('admin-password-is-set', () => {
-    const record = store.get(ADMIN_PASSWORD_KEY) as AdminPasswordRecord | undefined;
-    return Boolean(record?.hash && record.salt);
+    return isLocalPasswordSet(ADMIN_PASSWORD_KEY);
 });
 
 ipcMain.handle('admin-password-set', (_event, password: unknown) => {
-    if (!isValidAdminPassword(password)) return false;
+    if (!isValidLocalPassword(password)) return false;
 
-    setAdminPassword(password);
+    setLocalPassword(ADMIN_PASSWORD_KEY, password);
     return true;
 });
 
 ipcMain.handle('admin-password-verify', (_event, password: unknown) =>
-    verifyAdminPassword(password),
+    verifyLocalPassword(ADMIN_PASSWORD_KEY, password),
 );
 
 ipcMain.handle(
     'admin-password-change',
     (_event, currentPassword: unknown, newPassword: unknown) => {
-        if (!verifyAdminPassword(currentPassword) || !isValidAdminPassword(newPassword)) {
+        if (
+            !verifyLocalPassword(ADMIN_PASSWORD_KEY, currentPassword) ||
+            !isValidLocalPassword(newPassword)
+        ) {
             return false;
         }
 
-        setAdminPassword(newPassword);
+        setLocalPassword(ADMIN_PASSWORD_KEY, newPassword);
         return true;
     },
 );
+
+ipcMain.handle('dj-password-is-set', () => isLocalPasswordSet(DJ_PASSWORD_KEY));
+
+ipcMain.handle('dj-password-set', (_event, password: unknown) => {
+    if (!isValidLocalPassword(password)) return false;
+
+    setLocalPassword(DJ_PASSWORD_KEY, password);
+    return true;
+});
+
+ipcMain.handle('dj-password-verify', (_event, password: unknown) =>
+    verifyLocalPassword(DJ_PASSWORD_KEY, password),
+);
+
+ipcMain.handle('dj-password-change', (_event, currentPassword: unknown, newPassword: unknown) => {
+    if (
+        !verifyLocalPassword(DJ_PASSWORD_KEY, currentPassword) ||
+        !isValidLocalPassword(newPassword)
+    ) {
+        return false;
+    }
+
+    setLocalPassword(DJ_PASSWORD_KEY, newPassword);
+    return true;
+});
 
 ipcMain.handle('settings-get', (_event, data: { property: string }) => {
     return store.get(`${data.property}`);

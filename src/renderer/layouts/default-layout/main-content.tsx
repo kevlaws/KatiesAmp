@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { motion } from 'motion/react';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet } from 'react-router';
 import { shallow } from 'zustand/shallow';
 
@@ -17,6 +17,7 @@ import { RightSidebar } from '/@/renderer/layouts/default-layout/right-sidebar';
 import {
     useAppStore,
     useAppStoreActions,
+    useDjModeExpanded,
     useGlobalExpanded,
     useSideQueueLayout,
     useSideQueueType,
@@ -26,7 +27,14 @@ import { Spinner } from '/@/shared/components/spinner/spinner';
 
 const MINIMUM_SIDEBAR_WIDTH = 260;
 
+const DjModeOverlay = lazy(() =>
+    import('/@/renderer/features/dj/components/dj-mode-overlay').then((module) => ({
+        default: module.DjModeOverlay,
+    })),
+);
+
 export const MainContent = ({ shell }: { shell?: boolean }) => {
+    const djModeExpanded = useDjModeExpanded();
     const { collapsed, leftWidth, rightExpanded, rightHeight, rightWidth } = useAppStore(
         (state) => ({
             collapsed: state.sidebar.collapsed,
@@ -210,6 +218,7 @@ export const MainContent = ({ shell }: { shell?: boolean }) => {
                 <>
                     <FullScreenVisualizerOverlay />
                     <FullScreenOverlay />
+                    <Suspense fallback={null}>{djModeExpanded && <DjModeOverlay />}</Suspense>
                     <LeftSidebar isResizing={isResizing} startResizing={startResizing} />
                     <RightSidebar
                         isResizing={isResizingRight}

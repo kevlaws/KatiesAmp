@@ -13,3 +13,15 @@
 - [x] Fix repeat-off playback so a playlist stops at the end instead of repeating.
 - [ ] Set the new default application settings on installation.
 - [x] Add administrator password protection for Application Settings, Manage Servers, and column/layout configuration, while leaving music-folder selection unlocked.
+
+## KatiesAmp V2 DJ backlog
+
+- [ ] Restore manual half-BPM and double-BPM correction controls for deck analysis.
+- [ ] Add improved scrolling waveforms with beat markers, an overview, frequency colours, end warnings, seeking, and zoom.
+- [ ] Add persistent hot cues and automatic beat-length loops with halve and double controls.
+- [ ] Add headphone cueing with separate master and headphone devices, headphone volume, and Cue/Master blend.
+- [ ] Add a focused per-deck effects section with echo, reverb, flanger, filters, brake, and wet/dry control.
+- [ ] Add Automix with automatic track preparation, volume matching, repeat protection, transition profiles, and optional BPM-compatible selection.
+- [ ] Expand track preparation with BPM, key, duration and gain data, colour coding, sorting, preview, suggestions, and local crates.
+- [ ] Add session tools including played history, CSV export, saved sets, recording, session statistics, and crash recovery.
+- [ ] Add microphone and announcement controls with automatic music ducking, mic gain and limiting, a soundboard, and emergency fade-out.

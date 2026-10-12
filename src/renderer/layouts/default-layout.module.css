@@ -21,3 +21,14 @@
     grid-template-rows: 30px calc(100vh - 120px) 90px;
     grid-template-rows: 30px calc(100dvh - 120px) 90px;
 }
+
+.layout.dj-mode {
+    grid-template-rows: 0 100vh 0;
+    grid-template-rows: 0 100dvh 0;
+}
+
+.layout.windows.dj-mode,
+.layout.macos.dj-mode {
+    grid-template-rows: 30px calc(100vh - 30px) 0;
+    grid-template-rows: 30px calc(100dvh - 30px) 0;
+}

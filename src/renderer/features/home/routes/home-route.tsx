@@ -7,10 +7,9 @@ import { controller } from '/@/renderer/api/controller';
 import { NativeScrollArea } from '/@/renderer/components/native-scroll-area/native-scroll-area';
 import companyLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
 import { AnimatedPage } from '/@/renderer/features/shared/components/animated-page';
+import { MusicFolderSelect } from '/@/renderer/features/shared/components/music-folder-select';
 import { PageErrorBoundary } from '/@/renderer/features/shared/components/page-error-boundary';
-import { useServerLibraryControls } from '/@/renderer/features/shared/hooks/use-server-library-controls';
 import { useCurrentServer } from '/@/renderer/store';
-import { Select } from '/@/shared/components/select/select';
 
 const SUPPORT_EMAIL = 'k.laws@katieobriensirishtaverns.com';
 const SUPPORT_PHONE = '07969 765 597';
@@ -107,11 +106,6 @@ const useServerConnectionStatus = (serverId?: string) => {
 const HomeRoute = () => {
     const server = useCurrentServer();
     const connectionStatus = useServerConnectionStatus(server?.id);
-    const { musicFolders, musicFoldersQuery, selectedMusicFolders, selectMusicFolder } =
-        useServerLibraryControls();
-    const musicFolderOptions =
-        musicFolders?.items.map((folder) => ({ label: folder.name, value: folder.id })) || [];
-    const selectedMusicFolderId = selectedMusicFolders[0]?.id || null;
     const connectionLabel = {
         checking: 'Checking connection…',
         connected: `Connected to ${server?.name || 'server'}`,
@@ -182,27 +176,7 @@ const HomeRoute = () => {
                                     <div className={styles.detailRow}>
                                         <dt>Music folder</dt>
                                         <dd className={styles.musicFolderControl}>
-                                            <Select
-                                                aria-label="Select music folder"
-                                                data={musicFolderOptions}
-                                                disabled={
-                                                    musicFoldersQuery.isLoading ||
-                                                    musicFoldersQuery.isError ||
-                                                    !musicFolders?.items.length
-                                                }
-                                                onChange={(value) => {
-                                                    if (value) selectMusicFolder(value);
-                                                }}
-                                                placeholder={
-                                                    musicFoldersQuery.isLoading
-                                                        ? 'Loading folders…'
-                                                        : musicFolders?.items.length
-                                                          ? 'Choose a music folder'
-                                                          : 'Folders unavailable'
-                                                }
-                                                value={selectedMusicFolderId}
-                                                width="100%"
-                                            />
+                                            <MusicFolderSelect />
                                         </dd>
                                     </div>
                                 </dl>
