@@ -42,6 +42,26 @@ test('a beta base version starts at beta one', () => {
     );
 });
 
+test('v2 prereleases remain isolated from the stable update manifest', () => {
+    assert.deepEqual(
+        resolveReleaseVersion({
+            channel: 'beta',
+            currentVersion: '2.0.0-beta.1',
+            releaseTags: ['v1.1.1', 'v2.0.0-beta.1'],
+        }),
+        { manifest: 'beta.yml', tag: 'v2.0.0-beta.2', version: '2.0.0-beta.2' },
+    );
+    assert.deepEqual(
+        resolveReleaseVersion({
+            channel: 'release',
+            currentVersion: '1.1.1',
+            releaseTags: ['v1.1.1', 'v2.0.0-beta.1'],
+            requestedVersion: '1.1.2',
+        }),
+        { manifest: 'latest.yml', tag: 'v1.1.2', version: '1.1.2' },
+    );
+});
+
 test('release resolution removes the current prerelease suffix', () => {
     assert.deepEqual(
         resolveReleaseVersion({
