@@ -1,3 +1,6 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+
 import {
     expect,
     getSongCell,
@@ -14,6 +17,20 @@ const latestTask = async (page) => (await tasks(page)).at(-1);
 
 const waitForTaskState = (page, state) =>
     expect.poll(async () => (await latestTask(page))?.state, { timeout: 20_000 }).toBe(state);
+
+const waitForAlbumAvailableOffline = async (page) => {
+    await waitForTaskState(page, 'complete');
+    await expect
+        .poll(() => page.evaluate(() => window.api.offline.list().then((items) => items.length)))
+        .toBe(6);
+    await expect
+        .poll(() => page.evaluate(() => window.api.offline.listAlbums().then((items) => items[0])))
+        .not.toBeUndefined();
+    const heading = page.getByRole('heading', { level: 1, name: 'Automation Album' });
+    await expect(
+        heading.locator('..').getByRole('button', { name: 'Remove offline download' }),
+    ).toBeVisible();
+};
 
 const downloadAlbum = async (page) => {
     await navigateTo(page, '/library/albums/album-1');
@@ -51,6 +68,12 @@ const seekActiveTrackNearEnd = (page, secondsFromEnd = 0.15) =>
         }
         active.currentTime = Math.max(0, active.duration - offset);
     }, secondsFromEnd);
+
+const resolveOfflineSong = (page, songId) =>
+    page.evaluate(async (id) => {
+        const entry = (await window.api.offline.list()).find((item) => item.song.id === id);
+        return entry ? window.api.offline.resolve(entry.song._serverId, id) : null;
+    }, songId);
 
 test('@nightly displays live progress, supports cancellation, and retries the batch', async ({
     mockJellyfin,
@@ -171,6 +194,117 @@ test('@nightly plays a downloaded track after the server becomes unavailable', a
             ),
         )
         .toBe(true);
+});
+
+test('@nightly treats an unchanged managed album sync as a no-op', async ({ page }) => {
+    await login(page);
+    await downloadAlbum(page);
+    await waitForAlbumAvailableOffline(page);
+
+    const storageDirectory = await page.evaluate(() =>
+        window.api.offline.getStorageInfo().then((info) => info.defaultDirectory),
+    );
+    const manifestPath = path.join(storageDirectory, 'manifest.json');
+    const manifestBefore = await fs.readFile(manifestPath, 'utf8');
+    const taskIdsBefore = (await tasks(page)).map((task) => task.id);
+
+    const sync = await page.evaluate(async () => {
+        const [album] = await window.api.offline.listAlbums();
+        const entries = await window.api.offline.list();
+        const entriesById = new Map(entries.map((entry) => [entry.song.id, entry]));
+        let progressEvents = 0;
+        const unsubscribe = window.api.offline.onDownloadProgress(() => {
+            progressEvents += 1;
+        });
+
+        try {
+            const result = await window.api.offline.syncAlbum({
+                album,
+                silent: true,
+                tracks: album.songIds.map((songId) => ({
+                    song: entriesById.get(songId).song,
+                    url: 'http://127.0.0.1/unchanged-sync-must-not-download',
+                })),
+            });
+            return { progressEvents, result };
+        } finally {
+            unsubscribe();
+        }
+    });
+
+    expect(sync.progressEvents).toBe(0);
+    expect(sync.result).toMatchObject({ downloaded: 0, removed: 0, unchanged: 6 });
+    expect((await tasks(page)).map((task) => task.id)).toEqual(taskIdsBefore);
+    expect(await fs.readFile(manifestPath, 'utf8')).toBe(manifestBefore);
+});
+
+test('@nightly restores a managed offline track when its local file is missing', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    await downloadAlbum(page);
+    await waitForAlbumAvailableOffline(page);
+
+    const source = await resolveOfflineSong(page, 'song-1');
+    expect(source).not.toBeNull();
+    await fs.rm(source.filePath);
+    await expect.poll(() => resolveOfflineSong(page, 'song-1')).toBeNull();
+
+    const downloadsBeforeSync = mockJellyfin.state.requests.filter((request) =>
+        request.pathname.toLowerCase().includes('/items/song-1/download'),
+    ).length;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+    await expect
+        .poll(
+            () =>
+                mockJellyfin.state.requests.filter((request) =>
+                    request.pathname.toLowerCase().includes('/items/song-1/download'),
+                ).length,
+            { timeout: 20_000 },
+        )
+        .toBeGreaterThan(downloadsBeforeSync);
+    await waitForTaskState(page, 'complete');
+    await expect.poll(() => resolveOfflineSong(page, 'song-1')).not.toBeNull();
+});
+
+test('@nightly keeps silent album maintenance out of visible download status', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    await downloadAlbum(page);
+    await waitForAlbumAvailableOffline(page);
+
+    const sidebarAlbum = page
+        .locator('#left-sidebar')
+        .getByText('Automation Album', { exact: true })
+        .locator('xpath=ancestor::a[1]');
+    await expect(sidebarAlbum.getByRole('img', { name: 'Available offline' })).toBeVisible();
+
+    const downloadsBeforeSync = mockJellyfin.state.requests.filter((request) =>
+        request.pathname.toLowerCase().includes('/items/song-1/download'),
+    ).length;
+    mockJellyfin.setAudioDelay(1_000);
+    mockJellyfin.updateSong('song-1', { DateCreated: '2026-02-01T00:00:00.000Z' });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+    await expect
+        .poll(
+            () =>
+                mockJellyfin.state.requests.filter((request) =>
+                    request.pathname.toLowerCase().includes('/items/song-1/download'),
+                ).length,
+            { timeout: 20_000 },
+        )
+        .toBeGreaterThan(downloadsBeforeSync);
+    await expect(sidebarAlbum.getByRole('img', { name: 'Available offline' })).toBeVisible();
+    await expect(sidebarAlbum.locator('[aria-label^="Downloading "]')).toHaveCount(0);
+    await expect(page.getByRole('button', { exact: true, name: 'Downloads' })).toBeVisible();
+
+    await waitForTaskState(page, 'complete');
+    mockJellyfin.setAudioDelay(0);
 });
 
 test('@nightly synchronizes playlist removals and changed server metadata', async ({

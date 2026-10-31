@@ -129,6 +129,8 @@ export const refreshOfflineDownloads = (): Promise<void> => {
 };
 
 const updateTask = (task: OfflineDownloadTask) => {
+    if (task.silent) return;
+
     useOfflineDownloadStore.setState((state) => {
         const tasks = { ...state.tasks, [task.id]: task };
         return {
@@ -149,7 +151,9 @@ export const refreshOfflineTasks = async () => {
     if (!offlineApi) return;
     const tasks = await offlineApi.listDownloadTasks();
     useOfflineDownloadStore.setState({
-        tasks: Object.fromEntries(tasks.map((task) => [task.id, task])),
+        tasks: Object.fromEntries(
+            tasks.filter((task) => !task.silent).map((task) => [task.id, task]),
+        ),
     });
 };
 
@@ -166,7 +170,9 @@ export const initOfflineDownloads = async () => {
         ]);
         useOfflineDownloadStore.setState((state) => ({
             tasks: {
-                ...Object.fromEntries(tasks.map((task) => [task.id, task])),
+                ...Object.fromEntries(
+                    tasks.filter((task) => !task.silent).map((task) => [task.id, task]),
+                ),
                 ...state.tasks,
             },
         }));
@@ -209,6 +215,7 @@ const getStatus = (
     const latestTask = Object.values(state.tasks)
         .filter(
             (task) =>
+                !task.silent &&
                 task.serverId === serverId &&
                 (type === 'track'
                     ? task.songIds.includes(item.id)
