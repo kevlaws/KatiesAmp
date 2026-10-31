@@ -18,7 +18,7 @@ import { useSetRating } from '/@/renderer/features/shared/hooks/use-set-rating';
 import { AppRoute } from '/@/renderer/router/routes';
 import { useCurrentServer, useShowFavorites, useShowRatings } from '/@/renderer/store';
 import { usePlayButtonBehavior } from '/@/renderer/store/settings.store';
-import { formatDurationString, formatPartialIsoDateUTC, formatSizeString } from '/@/renderer/utils';
+import { formatDurationString, formatSizeString } from '/@/renderer/utils';
 import { normalizeReleaseTypes } from '/@/renderer/utils/normalize-release-types';
 import { Group } from '/@/shared/components/group/group';
 import { Separator } from '/@/shared/components/separator/separator';
@@ -99,9 +99,6 @@ export const AlbumDetailHeader = forwardRef<HTMLDivElement>((_props, ref) => {
         });
     };
 
-    const releaseYear = detailQuery?.data?.releaseYear;
-    const releaseDate = detailQuery?.data?.releaseDate;
-
     const metadataItems = useMemo(() => {
         const items: Array<{ id: string; value: React.ReactNode | string | undefined }> = [];
 
@@ -109,51 +106,7 @@ export const AlbumDetailHeader = forwardRef<HTMLDivElement>((_props, ref) => {
 
         if (!album) return [];
 
-        const originalDifferentFromRelease =
-            album.originalDate && album.originalDate !== album.releaseDate;
-
-        const originalYearDifferentFromRelease =
-            album.originalYear > 0 &&
-            album.releaseYear != null &&
-            album.originalYear !== album.releaseYear;
-
         const playCount = album?.playCount;
-
-        const trackYearRangeDifferent = album.trackYearRange?.max !== album.trackYearRange?.min;
-
-        if (album.trackYearRange && trackYearRangeDifferent) {
-            items.push({
-                id: 'trackYearRange',
-                value: `${album.trackYearRange.min}-${album.trackYearRange.max}`,
-            });
-        }
-
-        if (album.originalDate && originalDifferentFromRelease) {
-            items.push({
-                id: 'originalDate',
-                value: `${formatPartialIsoDateUTC(album.originalDate)}`,
-            });
-        } else if (album.originalYear > 0 && originalYearDifferentFromRelease) {
-            items.push({
-                id: 'originalYear',
-                value: `${album.originalYear}`,
-            });
-        }
-
-        const prefixNecessary = items.length > 0;
-        const releasePrefix = prefixNecessary ? `${t('page.albumDetail.released')} ` : '';
-        const releaseYearPrefix = prefixNecessary ? `${t('page.albumDetail.released')} ` : '';
-        if (releaseDate) {
-            items.push({
-                id: 'releaseDate',
-                value: `${releasePrefix}${formatPartialIsoDateUTC(releaseDate)}`,
-            });
-        } else if (releaseYear != null && releaseYear > 0) {
-            items.push({
-                id: 'releaseYear',
-                value: `${releaseYearPrefix}${releaseYear}`,
-            });
-        }
 
         items.push(
             ...[
@@ -183,7 +136,7 @@ export const AlbumDetailHeader = forwardRef<HTMLDivElement>((_props, ref) => {
         );
 
         return items.filter((item) => !!item.value);
-    }, [detailQuery?.data, releaseDate, releaseYear, t]);
+    }, [detailQuery?.data, t]);
 
     const headerItem = useMemo(() => {
         const album = detailQuery?.data;

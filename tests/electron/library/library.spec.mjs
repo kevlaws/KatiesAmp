@@ -122,6 +122,7 @@ test('@full keeps the album detail screen focused on playback', async ({ page })
     await expect(heading).toBeVisible({ timeout: 15_000 });
 
     const header = heading.locator('..');
+    await expect(header.getByText('2026', { exact: true })).toHaveCount(0);
     for (const label of ['Play', 'Shuffle', 'Download']) {
         const button = header.getByRole('button', { exact: true, name: label });
         await expect(button).toBeVisible();
