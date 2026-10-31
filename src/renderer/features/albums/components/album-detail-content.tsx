@@ -309,7 +309,6 @@ export const AlbumDetailContent = () => {
 
     const comment = detailQuery?.data?.comment;
 
-    const releaseYear = detailQuery?.data?.releaseYear;
     const labels = detailQuery?.data?.recordLabels;
 
     return (
@@ -334,7 +333,7 @@ export const AlbumDetailContent = () => {
                     <Stack gap="xs">
                         {labels.map((label) => (
                             <Text isMuted key={`label-${label}`} size="sm">
-                                ℗{releaseYear ? ` ${releaseYear}` : ''} {label}
+                                ℗ {label}
                             </Text>
                         ))}
                     </Stack>

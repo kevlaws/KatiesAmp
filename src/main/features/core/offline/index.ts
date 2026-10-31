@@ -21,6 +21,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { isDeepStrictEqual } from 'node:util';
 
 import { store } from '/@/main/features/core/settings';
 import log from '/@/main/logger';
@@ -452,6 +453,15 @@ const updateManifest = <T>(update: (manifest: OfflineManifest) => Promise<T> | T
     return operation;
 };
 
+const readManifestSnapshot = (): Promise<OfflineManifest> => {
+    const operation = manifestUpdate.then(() => readManifest());
+    manifestUpdate = operation.then(
+        () => undefined,
+        () => undefined,
+    );
+    return operation;
+};
+
 export const resolveOfflineSource = async (
     serverId: string,
     songId: string,
@@ -757,6 +767,58 @@ const syncCollection = async (
     silent = false,
 ) => {
     const tracks = [...new Map(requestedTracks.map((track) => [track.song.id, track])).values()];
+    const songIds = tracks.map((track) => track.song.id);
+    const manifest = await readManifestSnapshot();
+    const collectionKey =
+        type === 'album'
+            ? getAlbumKey(collection.serverId, collection.id)
+            : getPlaylistKey(collection.serverId, collection.id);
+    const collections = type === 'album' ? manifest.albums : manifest.playlists;
+    const existingCollection = collections[collectionKey];
+    const trackStates = await Promise.all(
+        tracks.map(async (track) => {
+            const entry = manifest.entries[getEntryKey(collection.serverId, track.song.id)];
+            const filePath = entry && resolveEntryPath(entry.fileName);
+            const fileExists = filePath
+                ? await fs
+                      .access(filePath)
+                      .then(() => true)
+                      .catch(() => false)
+                : false;
+            return {
+                changed: !entry || !fileExists || entry.fingerprint !== getFingerprint(track.song),
+                metadataMatches:
+                    Boolean(entry) &&
+                    isDeepStrictEqual(entry?.song, { ...track.song, imageUrl: null }),
+                owned: Boolean(
+                    entry &&
+                    (type === 'album'
+                        ? entry.albumIds.includes(collection.id)
+                        : entry.playlistIds.includes(collection.id)),
+                ),
+                track,
+            };
+        }),
+    );
+    const collectionMatches =
+        existingCollection?.id === collection.id &&
+        existingCollection.name === collection.name &&
+        existingCollection.serverId === collection.serverId &&
+        isDeepStrictEqual(existingCollection.songIds, songIds);
+
+    if (
+        collectionMatches &&
+        trackStates.every((state) => !state.changed && state.metadataMatches && state.owned)
+    ) {
+        return {
+            collection: existingCollection,
+            downloaded: 0,
+            removed: 0,
+            removedSongIds: [],
+            unchanged: tracks.length,
+        };
+    }
+
     const task = await createTask(
         {
             ids: [collection.id],
@@ -769,24 +831,6 @@ const syncCollection = async (
     );
 
     try {
-        const manifest = await readManifest();
-        const trackStates = await Promise.all(
-            tracks.map(async (track) => {
-                const entry = manifest.entries[getEntryKey(collection.serverId, track.song.id)];
-                const filePath = entry && resolveEntryPath(entry.fileName);
-                const fileExists = filePath
-                    ? await fs
-                          .access(filePath)
-                          .then(() => true)
-                          .catch(() => false)
-                    : false;
-                return {
-                    changed:
-                        !entry || !fileExists || entry.fingerprint !== getFingerprint(track.song),
-                    track,
-                };
-            }),
-        );
         const changedTracks = trackStates.filter((item) => item.changed).map((item) => item.track);
         const unchangedTracks = trackStates
             .filter((item) => !item.changed)
@@ -823,7 +867,6 @@ const syncCollection = async (
         if (task.state === 'cancelled') throw new Error('Download cancelled');
         if (task.state === 'error') throw new Error(task.error || 'Download failed');
 
-        const songIds = tracks.map((track) => track.song.id);
         let removed = 0;
         let removedSongIds: string[] = [];
         const syncedCollection = await updateManifest(async (nextManifest) => {

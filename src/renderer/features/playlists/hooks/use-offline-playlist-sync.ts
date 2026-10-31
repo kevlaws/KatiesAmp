@@ -5,6 +5,7 @@ import isElectron from 'is-electron';
 import { useEffect } from 'react';
 
 import { api } from '/@/renderer/api';
+import { refreshOfflineDownloads } from '/@/renderer/features/offline/offline-download.store';
 import { getAlbumSongsById } from '/@/renderer/features/player/utils';
 import { usePlayerStoreBase } from '/@/renderer/store/player.store';
 import { logger } from '/@/renderer/utils/logger';
@@ -12,7 +13,7 @@ import { LibraryItem, PlaylistSongListResponse, Song } from '/@/shared/types/dom
 
 const syncing = new Set<string>();
 
-const syncTracks = async (playlist: OfflinePlaylist, songs: Song[]) => {
+const syncTracks = async (playlist: OfflinePlaylist, songs: Song[], refreshSnapshot = false) => {
     const key = `playlist:${playlist.serverId}:${playlist.id}`;
     if (syncing.has(key)) return;
     syncing.add(key);
@@ -45,10 +46,11 @@ const syncTracks = async (playlist: OfflinePlaylist, songs: Song[]) => {
         }
     } finally {
         syncing.delete(key);
+        if (refreshSnapshot) await refreshOfflineDownloads();
     }
 };
 
-const syncAlbumTracks = async (album: OfflineAlbum, queryClient: QueryClient, songs: Song[]) => {
+const syncAlbumTracks = async (album: OfflineAlbum, songs: Song[]) => {
     const key = `album:${album.serverId}:${album.id}`;
     if (syncing.has(key)) return;
     syncing.add(key);
@@ -81,7 +83,6 @@ const syncAlbumTracks = async (album: OfflineAlbum, queryClient: QueryClient, so
         }
     } finally {
         syncing.delete(key);
-        void queryClient.invalidateQueries({ queryKey: [album.serverId, 'offline-status'] });
     }
 };
 
@@ -97,7 +98,7 @@ export const syncManagedOfflinePlaylist = async (serverId: string, playlistId: s
             apiClientProps: { serverId },
             query: { id: playlistId },
         });
-        await syncTracks(playlist, response.items);
+        await syncTracks(playlist, response.items, true);
     } catch (error) {
         logger.warn('Offline playlist synchronization failed', { error, playlistId, serverId });
     }
@@ -112,42 +113,56 @@ export const useOfflinePlaylistSync = (
         if (!enabled || !isElectron() || !serverId) return;
 
         const syncAll = async () => {
-            const [albums, playlists] = await Promise.all([
-                window.api.offline.listAlbums(),
-                window.api.offline.listPlaylists(),
-            ]);
-            for (const playlist of playlists) {
-                if (playlist.serverId !== serverId) continue;
-                try {
-                    const response = await api.controller.getPlaylistSongList({
-                        apiClientProps: { serverId },
-                        query: { id: playlist.id },
-                    });
-                    await syncTracks(playlist, response.items);
-                } catch (error) {
-                    logger.warn('Offline playlist synchronization failed', {
-                        error,
-                        playlistId: playlist.id,
-                        serverId,
-                    });
+            let attempted = false;
+            try {
+                const [albums, playlists] = await Promise.all([
+                    window.api.offline.listAlbums(),
+                    window.api.offline.listPlaylists(),
+                ]);
+                for (const playlist of playlists) {
+                    if (playlist.serverId !== serverId) continue;
+                    attempted = true;
+                    try {
+                        const response = await api.controller.getPlaylistSongList({
+                            apiClientProps: { serverId },
+                            query: { id: playlist.id },
+                        });
+                        await syncTracks(playlist, response.items);
+                    } catch (error) {
+                        logger.warn('Offline playlist synchronization failed', {
+                            error,
+                            playlistId: playlist.id,
+                            serverId,
+                        });
+                    }
                 }
-            }
-            for (const album of albums) {
-                if (album.serverId !== serverId) continue;
-                try {
-                    const response = await getAlbumSongsById({
-                        forceRefresh: true,
-                        id: [album.id],
-                        queryClient,
-                        serverId,
-                    });
-                    await syncAlbumTracks(album, queryClient, response.items);
-                } catch (error) {
-                    logger.warn('Offline album synchronization failed', {
-                        albumId: album.id,
-                        error,
-                        serverId,
-                    });
+                for (const album of albums) {
+                    if (album.serverId !== serverId) continue;
+                    attempted = true;
+                    try {
+                        const response = await getAlbumSongsById({
+                            forceRefresh: true,
+                            id: [album.id],
+                            queryClient,
+                            serverId,
+                        });
+                        await syncAlbumTracks(album, response.items);
+                    } catch (error) {
+                        logger.warn('Offline album synchronization failed', {
+                            albumId: album.id,
+                            error,
+                            serverId,
+                        });
+                    }
+                }
+            } finally {
+                if (attempted) {
+                    await Promise.all([
+                        refreshOfflineDownloads(),
+                        queryClient.invalidateQueries({
+                            queryKey: [serverId, 'offline-status'],
+                        }),
+                    ]);
                 }
             }
         };
@@ -175,7 +190,7 @@ export const useOfflinePlaylistSync = (
                         (playlist) => playlist.serverId === serverId && playlist.id === key[3],
                     ),
                 )
-                .then((playlist) => playlist && syncTracks(playlist, response.items))
+                .then((playlist) => playlist && syncTracks(playlist, response.items, true))
                 .catch((error) =>
                     logger.warn('Offline playlist synchronization failed', {
                         error,

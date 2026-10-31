@@ -104,11 +104,6 @@ const DummyAlbumDetailRoute = () => {
 
     const metadataItems = [
         {
-            id: 'releaseYear',
-            secondary: false,
-            value: detailQuery?.data?.releaseYear,
-        },
-        {
             id: 'duration',
             secondary: false,
             value: detailQuery?.data?.duration && formatDurationString(detailQuery.data.duration),
