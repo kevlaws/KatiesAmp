@@ -307,6 +307,66 @@ test('@nightly keeps silent album maintenance out of visible download status', a
     mockJellyfin.setAudioDelay(0);
 });
 
+test('@nightly defers album maintenance during playback and resumes it once paused', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    await downloadAlbum(page);
+    await waitForAlbumAvailableOffline(page);
+
+    await navigateTo(page, '/library/songs');
+    const song = getSongCell(page, 'Automation Track 1');
+    await expect(song).toBeVisible({ timeout: 15_000 });
+    await song.dblclick();
+
+    const playerBar = page.locator('.media-player');
+    const pauseButton = playerBar.getByRole('button', { name: 'Pause' });
+    await expect(pauseButton).toBeVisible({ timeout: 10_000 });
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                [...document.querySelectorAll('audio')].some((audio) => !audio.paused),
+            ),
+        )
+        .toBe(true);
+
+    const songDownloadCount = () =>
+        mockJellyfin.state.requests.filter((request) =>
+            request.pathname.toLowerCase().includes('/items/song-1/download'),
+        ).length;
+    const downloadsBeforeSync = songDownloadCount();
+
+    mockJellyfin.updateSong('song-1', { DateCreated: '2026-02-01T00:00:00.000Z' });
+    await page.evaluate(() => {
+        window.dispatchEvent(new Event('focus'));
+        window.dispatchEvent(new Event('online'));
+        window.dispatchEvent(new Event('focus'));
+    });
+    await page.waitForTimeout(1_000);
+    expect(songDownloadCount()).toBe(downloadsBeforeSync);
+
+    await pauseButton.click();
+    await expect(playerBar.getByRole('button', { name: 'Play' })).toBeVisible();
+    await expect.poll(songDownloadCount, { timeout: 20_000 }).toBe(downloadsBeforeSync + 1);
+    await expect
+        .poll(
+            () =>
+                page.evaluate(() =>
+                    window.api.offline
+                        .list()
+                        .then(
+                            (items) =>
+                                items.find((item) => item.song.id === 'song-1')?.song.createdAt,
+                        ),
+                ),
+            { timeout: 20_000 },
+        )
+        .toBe('2026-02-01T00:00:00.000Z');
+    await page.waitForTimeout(500);
+    expect(songDownloadCount()).toBe(downloadsBeforeSync + 1);
+});
+
 test('@nightly synchronizes playlist removals and changed server metadata', async ({
     mockJellyfin,
     page,
@@ -355,7 +415,7 @@ test('@nightly synchronizes playlist removals and changed server metadata', asyn
     expect(managedPlaylist.songIds).toEqual(['song-1', 'song-2']);
 });
 
-test('@nightly removes a server-deleted download from the queue and continues playback', async ({
+test('@nightly defers a server-deleted download removal until playback is paused', async ({
     mockJellyfin,
     page,
 }) => {
@@ -376,6 +436,19 @@ test('@nightly removes a server-deleted download from the queue and continues pl
     mockJellyfin.removeSong('song-2');
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
 
+    await page.waitForTimeout(1_000);
+    await expect
+        .poll(() => page.evaluate(() => window.api.offline.list().then((items) => items.length)))
+        .toBe(6);
+    await expect.poll(() => queueNames(page)).toContain('Automation Track 2');
+    await expect(
+        page.locator('.media-player').getByText('Automation Track 1', { exact: true }),
+    ).toBeVisible();
+
+    const playerBar = page.locator('.media-player');
+    await playerBar.getByRole('button', { name: 'Pause' }).click();
+    await expect(playerBar.getByRole('button', { name: 'Play' })).toBeVisible();
+
     await expect
         .poll(() => page.evaluate(() => window.api.offline.list().then((items) => items.length)), {
             timeout: 20_000,
@@ -386,6 +459,7 @@ test('@nightly removes a server-deleted download from the queue and continues pl
         page.locator('.media-player').getByText('Automation Track 1', { exact: true }),
     ).toBeVisible();
 
+    await playerBar.getByRole('button', { name: 'Play' }).click();
     await seekActiveTrackNearEnd(page);
     await expect(
         page.locator('.media-player').getByText('Automation Track 3', { exact: true }),

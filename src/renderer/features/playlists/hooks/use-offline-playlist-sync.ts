@@ -6,12 +6,15 @@ import { useEffect } from 'react';
 
 import { api } from '/@/renderer/api';
 import { refreshOfflineDownloads } from '/@/renderer/features/offline/offline-download.store';
+import { createOfflineSyncScheduler } from '/@/renderer/features/offline/utils/offline-sync-scheduler';
 import { getAlbumSongsById } from '/@/renderer/features/player/utils';
-import { usePlayerStoreBase } from '/@/renderer/store/player.store';
+import { subscribePlayerStatus, usePlayerStoreBase } from '/@/renderer/store/player.store';
 import { logger } from '/@/renderer/utils/logger';
 import { LibraryItem, PlaylistSongListResponse, Song } from '/@/shared/types/domain-types';
+import { PlayerStatus } from '/@/shared/types/types';
 
 const syncing = new Set<string>();
+const OFFLINE_SYNC_COOLDOWN_MS = 60 * 1000;
 
 const syncTracks = async (playlist: OfflinePlaylist, songs: Song[], refreshSnapshot = false) => {
     const key = `playlist:${playlist.serverId}:${playlist.id}`;
@@ -165,7 +168,17 @@ export const useOfflinePlaylistSync = (
                     ]);
                 }
             }
+            return attempted;
         };
+
+        const scheduler = createOfflineSyncScheduler({
+            cooldownMs: OFFLINE_SYNC_COOLDOWN_MS,
+            isPlaying: () => usePlayerStoreBase.getState().player.status === PlayerStatus.PLAYING,
+            onError: (error) => {
+                logger.warn('Offline maintenance synchronization failed', { error, serverId });
+            },
+            runSync: syncAll,
+        });
 
         const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
             const key = event.query.queryKey;
@@ -200,17 +213,25 @@ export const useOfflinePlaylistSync = (
                 );
         });
 
-        const handleSync = () => void syncAll();
+        const handleSync = () => void scheduler.request();
+        const handleOnline = () => void scheduler.request({ immediate: true });
+        const unsubscribePlayerStatus = subscribePlayerStatus(({ status }, previous) => {
+            if (previous.status === PlayerStatus.PLAYING && status !== PlayerStatus.PLAYING) {
+                scheduler.notifyPlaybackChanged();
+            }
+        });
         window.addEventListener('focus', handleSync);
-        window.addEventListener('online', handleSync);
+        window.addEventListener('online', handleOnline);
         const interval = window.setInterval(handleSync, 15 * 60 * 1000);
-        void syncAll();
+        void scheduler.request({ immediate: true });
 
         return () => {
+            scheduler.dispose();
             window.clearInterval(interval);
             unsubscribe();
+            unsubscribePlayerStatus();
             window.removeEventListener('focus', handleSync);
-            window.removeEventListener('online', handleSync);
+            window.removeEventListener('online', handleOnline);
         };
     }, [enabled, queryClient, serverId]);
 };
