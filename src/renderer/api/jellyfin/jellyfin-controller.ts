@@ -1354,6 +1354,7 @@ export const JellyfinController: InternalControllerEndpoint = {
         return {
             features,
             id: apiClientProps.server?.id,
+            name: res.body.ServerName ?? undefined,
             version: res.body.Version,
         };
     },

@@ -14,7 +14,7 @@ import {
     isLegacyAuth,
     isServerLock,
 } from '/@/renderer/features/action-required/utils/window-properties';
-import JellyfinIcon from '/@/renderer/features/servers/assets/jellyfin.png';
+import KatiesAmpLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
 import NavidromeIcon from '/@/renderer/features/servers/assets/navidrome.png';
 import SubsonicIcon from '/@/renderer/features/servers/assets/opensubsonic.png';
 import { IgnoreCorsSslSwitches } from '/@/renderer/features/servers/components/ignore-cors-ssl-switches';
@@ -51,7 +51,7 @@ import { ServerType, toServerType } from '/@/shared/types/types';
 const localSettings = isElectron() ? window.api.localSettings : null;
 
 const SERVER_ICONS: Record<ServerType, string> = {
-    [ServerType.JELLYFIN]: JellyfinIcon,
+    [ServerType.JELLYFIN]: KatiesAmpLogo,
     [ServerType.NAVIDROME]: NavidromeIcon,
     [ServerType.SUBSONIC]: SubsonicIcon,
 };
@@ -306,9 +306,10 @@ const LoginRoute = () => {
                         <Stack gap="xl">
                             <Stack align="center" gap="md">
                                 <img
-                                    alt={serverDisplayName}
+                                    alt=""
                                     height="80"
                                     src={serverIcon}
+                                    style={{ objectFit: 'contain' }}
                                     width="80"
                                 />
                                 <Text fw={600} size="xl">

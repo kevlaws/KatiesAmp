@@ -50,7 +50,7 @@ test('@full home layout remains readable when the application window is narrow',
     await page.waitForTimeout(500);
 
     const label = page.getByText('Server status', { exact: true });
-    const status = page.getByText('Connected to KATIESMUSICSERVER', { exact: true });
+    const status = page.getByText('Connected to KATIESMEDIASERVER', { exact: true });
     const musicFolderLabel = page.getByText('Music folder', { exact: true });
     const musicFolderSelector = page.getByRole('combobox', { name: 'Select music folder' });
     await expect(label).toBeVisible();

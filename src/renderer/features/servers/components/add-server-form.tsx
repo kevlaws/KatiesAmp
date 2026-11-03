@@ -10,7 +10,6 @@ import {
     isServerLock,
 } from '/@/renderer/features/action-required/utils/window-properties';
 import KatieObriensLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
-import JellyfinIcon from '/@/renderer/features/servers/assets/jellyfin.png';
 import NavidromeIcon from '/@/renderer/features/servers/assets/navidrome.png';
 import SubsonicIcon from '/@/renderer/features/servers/assets/opensubsonic.png';
 import styles from '/@/renderer/features/servers/components/add-server-form.module.css';
@@ -21,6 +20,7 @@ import {
     JellyfinSignInMethodPicker,
 } from '/@/renderer/features/servers/components/jellyfin-sign-in-method-picker';
 import { useJellyfinQuickConnect } from '/@/renderer/features/servers/hooks/use-jellyfin-quick-connect';
+import { KATIESAMP_DEFAULT_SERVER_NAME } from '/@/renderer/features/servers/utils/server-name';
 import { useAuthStoreActions, useServerList } from '/@/renderer/store';
 import { normalizeServerUrl } from '/@/renderer/utils/normalize-server-url';
 import { Checkbox } from '/@/shared/components/checkbox/checkbox';
@@ -41,7 +41,6 @@ import { DiscoveredServerItem, ServerType, toServerType } from '/@/shared/types/
 
 const autodiscover = isElectron() ? window.api.autodiscover : null;
 const localSettings = isElectron() ? window.api.localSettings : null;
-const DEFAULT_SERVER_NAME = 'KATIESMUSICSERVER';
 const DEFAULT_SERVER_URL = 'http://82.31.161.12:8096';
 const SUPPORT_EMAIL = 'k.laws@katieobriensirishtaverns.com';
 const SUPPORT_PHONE = '07969 765 597';
@@ -71,7 +70,7 @@ function InitialServerBrand() {
 function ServerIconWithLabel({ icon, label }: { icon: string; label: string }) {
     return (
         <Stack align="center" justify="center">
-            <img height="50" src={icon} width="50" />
+            <img alt="" height="50" src={icon} style={{ objectFit: 'contain' }} width="50" />
             <Text>{label}</Text>
         </Stack>
     );
@@ -98,7 +97,7 @@ function useAutodiscovery() {
 
 const SERVER_TYPES: Record<ServerType, ServerDetails> = {
     [ServerType.JELLYFIN]: {
-        icon: JellyfinIcon,
+        icon: KatieObriensLogo,
         name: 'Jellyfin',
     },
     [ServerType.NAVIDROME]: {
@@ -145,7 +144,7 @@ export const AddServerForm = ({ onCancel }: AddServerFormProps) => {
             legacyAuth: isLegacyAuth(),
             name:
                 (localSettings ? localSettings.env.SERVER_NAME : window.SERVER_NAME) ||
-                (isInitialSetup ? DEFAULT_SERVER_NAME : 'My Server'),
+                (isInitialSetup ? KATIESAMP_DEFAULT_SERVER_NAME : 'My Server'),
             password: '',
             preferInstantMix: undefined,
             preferRemoteUrl: false,
@@ -317,7 +316,13 @@ export const AddServerForm = ({ onCancel }: AddServerFormProps) => {
                     {discovered.map((server) => (
                         <Paper key={server.url} p="10px">
                             <Group>
-                                <img height="32" src={SERVER_TYPES[server.type].icon} width="32" />
+                                <img
+                                    alt=""
+                                    height="32"
+                                    src={SERVER_TYPES[server.type].icon}
+                                    style={{ objectFit: 'contain' }}
+                                    width="32"
+                                />
                                 <div
                                     onClick={() => fillServerDetails(server)}
                                     style={{ cursor: 'pointer' }}

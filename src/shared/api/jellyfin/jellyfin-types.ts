@@ -780,6 +780,7 @@ const lyrics = z.object({
 });
 
 const serverInfo = z.object({
+    ServerName: z.string().nullish(),
     Version: z.string(),
 });
 

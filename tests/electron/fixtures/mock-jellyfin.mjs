@@ -268,7 +268,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                 Id: 'mock-server',
                 OperatingSystem: 'Automation',
                 ProductName: 'Jellyfin Server',
-                ServerName: 'KATIESMUSICSERVER',
+                ServerName: 'KATIESMEDIASERVER',
                 StartupWizardCompleted: true,
                 Version: '10.10.7',
             });
@@ -278,7 +278,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         if (request.method === 'GET' && pathname === '/system/info') {
             sendJson(response, 200, {
                 Id: 'mock-server',
-                ServerName: 'KATIESMUSICSERVER',
+                ServerName: 'KATIESMEDIASERVER',
                 Version: '10.10.7',
             });
             return;
