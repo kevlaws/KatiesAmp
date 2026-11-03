@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router';
 
 import { api } from '/@/renderer/api';
 import { controller } from '/@/renderer/api/controller';
+import { resolveKatiesAmpServerName } from '/@/renderer/features/servers/utils/server-name';
 import { AppRoute } from '/@/renderer/router/routes';
 import { getServerById, useAuthStoreActions, useCurrentServerId } from '/@/renderer/store';
 import { logger } from '/@/renderer/utils/logger';
@@ -102,16 +103,29 @@ export const useServerAuthenticated = () => {
                         });
 
                         if (serverInfo && serverInfo.id === serverWithAuth.id) {
-                            const { features, version } = serverInfo;
+                            const { features, name: reportedName, version } = serverInfo;
                             const currentServer = getServerById(serverWithAuth.id);
+                            const serverReportedName =
+                                reportedName?.trim() || currentServer?.serverReportedName;
+                            const name = currentServer
+                                ? resolveKatiesAmpServerName(
+                                      currentServer.name,
+                                      reportedName,
+                                      currentServer.serverReportedName,
+                                  )
+                                : undefined;
 
                             if (
                                 currentServer &&
                                 (version !== currentServer.version ||
-                                    !isEqual(features, currentServer.features))
+                                    !isEqual(features, currentServer.features) ||
+                                    name !== currentServer.name ||
+                                    serverReportedName !== currentServer.serverReportedName)
                             ) {
                                 updateServer(serverWithAuth.id, {
                                     features,
+                                    name,
+                                    serverReportedName,
                                     version,
                                 });
                             }
@@ -203,16 +217,29 @@ export const useServerAuthenticated = () => {
                                 });
 
                                 if (serverInfo && serverInfo.id === serverWithAuth.id) {
-                                    const { features, version } = serverInfo;
+                                    const { features, name: reportedName, version } = serverInfo;
                                     const currentServer = getServerById(serverWithAuth.id);
+                                    const serverReportedName =
+                                        reportedName?.trim() || currentServer?.serverReportedName;
+                                    const name = currentServer
+                                        ? resolveKatiesAmpServerName(
+                                              currentServer.name,
+                                              reportedName,
+                                              currentServer.serverReportedName,
+                                          )
+                                        : undefined;
 
                                     if (
                                         currentServer &&
                                         (version !== currentServer.version ||
-                                            !isEqual(features, currentServer.features))
+                                            !isEqual(features, currentServer.features) ||
+                                            name !== currentServer.name ||
+                                            serverReportedName !== currentServer.serverReportedName)
                                     ) {
                                         updateServer(serverWithAuth.id, {
                                             features,
+                                            name,
+                                            serverReportedName,
                                             version,
                                         });
                                     }

@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 
 import styles from './server-selector.module.css';
 
-import JellyfinLogo from '/@/renderer/features/servers/assets/jellyfin.png';
+import KatiesAmpLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
 import NavidromeLogo from '/@/renderer/features/servers/assets/navidrome.png';
 import OpenSubsonicLogo from '/@/renderer/features/servers/assets/opensubsonic.png';
 import { useScanStatus } from '/@/renderer/features/shared/hooks/use-scan-status';
@@ -60,7 +60,7 @@ export const ServerSelector = () => {
         currentServer.type === ServerType.NAVIDROME
             ? NavidromeLogo
             : currentServer.type === ServerType.JELLYFIN
-              ? JellyfinLogo
+              ? KatiesAmpLogo
               : OpenSubsonicLogo;
 
     return (
@@ -74,7 +74,7 @@ export const ServerSelector = () => {
                 >
                     <Box className={styles.buttonContainer}>
                         <Group className={styles.buttonGroup} gap="sm">
-                            <img className={styles.logo} src={logo} />
+                            <img alt="" className={styles.logo} src={logo} />
                             <Stack className={styles.buttonStack} gap={2}>
                                 <Text fw={600} size="sm" truncate>
                                     {currentServer.name}

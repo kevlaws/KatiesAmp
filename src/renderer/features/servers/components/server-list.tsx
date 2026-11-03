@@ -3,7 +3,7 @@ import isElectron from 'is-electron';
 import { useTranslation } from 'react-i18next';
 
 import { isServerLock } from '/@/renderer/features/action-required/utils/window-properties';
-import JellyfinLogo from '/@/renderer/features/servers/assets/jellyfin.png';
+import KatiesAmpLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
 import NavidromeLogo from '/@/renderer/features/servers/assets/navidrome.png';
 import OpenSubsonicLogo from '/@/renderer/features/servers/assets/opensubsonic.png';
 import { AddServerForm } from '/@/renderer/features/servers/components/add-server-form';
@@ -49,15 +49,17 @@ export const ServerList = () => {
                                 <Accordion.Control>
                                     <Group>
                                         <img
+                                            alt=""
                                             src={
                                                 server.type === ServerType.NAVIDROME
                                                     ? NavidromeLogo
                                                     : server.type === ServerType.JELLYFIN
-                                                      ? JellyfinLogo
+                                                      ? KatiesAmpLogo
                                                       : OpenSubsonicLogo
                                             }
                                             style={{
                                                 height: 'var(--theme-font-size-lg)',
+                                                objectFit: 'contain',
                                                 width: 'var(--theme-font-size-lg)',
                                             }}
                                         />

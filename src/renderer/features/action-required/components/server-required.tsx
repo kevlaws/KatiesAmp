@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router';
 
 import styles from '/@/renderer/features/action-required/components/server-required.module.css';
 import { isServerLock } from '/@/renderer/features/action-required/utils/window-properties';
-import JellyfinLogo from '/@/renderer/features/servers/assets/jellyfin.png';
+import KatiesAmpLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
 import NavidromeLogo from '/@/renderer/features/servers/assets/navidrome.png';
 import OpenSubsonicLogo from '/@/renderer/features/servers/assets/opensubsonic.png';
 import { AddServerForm } from '/@/renderer/features/servers/components/add-server-form';
@@ -100,7 +100,7 @@ function ServerSelector() {
                     server.type === ServerType.NAVIDROME
                         ? NavidromeLogo
                         : server.type === ServerType.JELLYFIN
-                          ? JellyfinLogo
+                          ? KatiesAmpLogo
                           : OpenSubsonicLogo;
 
                 return (

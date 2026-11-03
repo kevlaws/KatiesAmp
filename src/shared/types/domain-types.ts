@@ -105,6 +105,7 @@ export type ServerListItem = {
     preferRemoteUrl?: boolean;
     remoteUrl?: string;
     savePassword?: boolean;
+    serverReportedName?: string;
     type: ServerType;
     url: string;
     userId: null | string;
@@ -1956,6 +1957,7 @@ export type SaveQueueQuery = {
 export type ServerInfo = {
     features: ServerFeatures;
     id?: string;
+    name?: string;
     version: string;
 };
 

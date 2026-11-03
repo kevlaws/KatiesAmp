@@ -11,7 +11,7 @@ test.describe('brand-new installation', () => {
         await expect(page.getByLabel('Username')).toBeVisible({ timeout: 20_000 });
         await expect(page.getByLabel('Username')).toBeFocused();
         await expect(page.getByText('Server login', { exact: true })).toBeVisible();
-        await expect(page.getByLabel('Server Name')).toHaveValue('KATIESMUSICSERVER');
+        await expect(page.getByLabel('Server Name')).toHaveValue('KATIESMEDIASERVER');
         await expect(page.getByLabel('Server Name')).toBeDisabled();
         await expect(page.getByLabel('URL')).toHaveValue('http://82.31.161.12:8096');
         await expect(page.getByLabel('URL')).toBeDisabled();
@@ -40,8 +40,13 @@ test('@smoke logs in and displays the branded home screen', async ({ page }) => 
     await expect(
         page.getByText('k.laws@katieobriensirishtaverns.com', { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText('Connected to KATIESMUSICSERVER', { exact: true })).toBeVisible();
+    await expect(page.getByText('Connected to KATIESMEDIASERVER', { exact: true })).toBeVisible();
     await expect(page.getByText('Admin', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Menu' }).click();
+    const serverLogo = page.getByLabel('Manage Servers').locator('img');
+    await expect(serverLogo).toBeVisible();
+    await expect(serverLogo).not.toHaveAttribute('src', /jellyfin/i);
 });
 
 test('@full rejects invalid credentials without leaving login', async ({ page }) => {

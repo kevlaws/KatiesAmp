@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
 import { isServerLock } from '/@/renderer/features/action-required/utils/window-properties';
-import JellyfinLogo from '/@/renderer/features/servers/assets/jellyfin.png';
+import KatiesAmpLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
 import NavidromeLogo from '/@/renderer/features/servers/assets/navidrome.png';
 import OpenSubsonicLogo from '/@/renderer/features/servers/assets/opensubsonic.png';
 import { EditServerForm } from '/@/renderer/features/servers/components/edit-server-form';
@@ -105,14 +105,20 @@ export const ServerSelectorItems = () => {
                     server.type === ServerType.NAVIDROME
                         ? NavidromeLogo
                         : server.type === ServerType.JELLYFIN
-                          ? JellyfinLogo
+                          ? KatiesAmpLogo
                           : OpenSubsonicLogo;
 
                 return (
                     <DropdownMenu.Item
                         isSelected={currentServer?.id === server.id && !isSessionExpired}
                         key={`server-${server.id}`}
-                        leftSection={<img src={logo} style={{ height: '1rem', width: '1rem' }} />}
+                        leftSection={
+                            <img
+                                alt=""
+                                src={logo}
+                                style={{ height: '1rem', objectFit: 'contain', width: '1rem' }}
+                            />
+                        }
                         onClick={() => {
                             if (isSessionExpired) {
                                 handleCredentialsModal(server);

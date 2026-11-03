@@ -14,6 +14,7 @@
 .server-logo {
     width: var(--theme-font-size-2xl);
     height: var(--theme-font-size-2xl);
+    object-fit: contain;
 }
 
 .server-row {
