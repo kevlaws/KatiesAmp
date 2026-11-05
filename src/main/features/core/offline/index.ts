@@ -178,6 +178,7 @@ const createTask = async (
     item: OfflineBatchDownloadRequest['item'],
     tracks: OfflineDownloadRequest[],
     silent = false,
+    automatic = false,
 ): Promise<OfflineDownloadTask> => {
     await ensureTasksLoaded();
     const finishedTasks = [...downloadTasks.values()]
@@ -195,6 +196,7 @@ const createTask = async (
 
     const now = new Date().toISOString();
     const task: OfflineDownloadTask = {
+        automatic,
         bytesDownloaded: 0,
         bytesTotal: tracks.reduce((total, track) => total + Math.max(0, track.song.size || 0), 0),
         completed: 0,
@@ -728,7 +730,6 @@ const removeCollection = async (
                 ? getAlbumKey(serverId, collectionId)
                 : getPlaylistKey(serverId, collectionId);
         const collections = type === 'album' ? manifest.albums : manifest.playlists;
-        if (!collections[key]) return 0;
 
         let removed = 0;
         for (const [entryKey, entry] of Object.entries(manifest.entries)) {
@@ -762,7 +763,7 @@ const removePlaylist = (serverId: string, playlistId: string) =>
 
 const syncCollection = async (
     type: 'album' | 'playlist',
-    collection: { id: string; name: string; serverId: string },
+    collection: { automatic?: boolean; id: string; name: string; serverId: string },
     requestedTracks: OfflineDownloadRequest[],
     silent = false,
 ) => {
@@ -775,6 +776,14 @@ const syncCollection = async (
             : getPlaylistKey(collection.serverId, collection.id);
     const collections = type === 'album' ? manifest.albums : manifest.playlists;
     const existingCollection = collections[collectionKey];
+    if (
+        type === 'album' &&
+        collection.automatic === true &&
+        tracks.length === 0 &&
+        !existingCollection
+    ) {
+        throw new Error(`Automatic album scan returned no tracks for ${collection.name}`);
+    }
     const trackStates = await Promise.all(
         tracks.map(async (track) => {
             const entry = manifest.entries[getEntryKey(collection.serverId, track.song.id)];
@@ -804,6 +813,8 @@ const syncCollection = async (
         existingCollection?.id === collection.id &&
         existingCollection.name === collection.name &&
         existingCollection.serverId === collection.serverId &&
+        (type !== 'album' ||
+            (existingCollection as OfflineAlbum).automatic === collection.automatic) &&
         isDeepStrictEqual(existingCollection.songIds, songIds);
 
     if (
@@ -828,6 +839,7 @@ const syncCollection = async (
         },
         tracks,
         silent,
+        type === 'album' && collection.automatic === true,
     );
 
     try {
@@ -1008,7 +1020,7 @@ ipcMain.handle('offline-playlist-list', async (): Promise<OfflinePlaylist[]> => 
 });
 ipcMain.handle('offline-album-list', async (): Promise<OfflineAlbum[]> => {
     const manifest = await readManifest();
-    return Object.values(manifest.albums);
+    return Object.values(manifest.albums).filter((album) => album.songIds.length > 0);
 });
 ipcMain.handle('offline-album-remove', (_event, serverId: string, albumId: string) =>
     removeAlbum(serverId, albumId),

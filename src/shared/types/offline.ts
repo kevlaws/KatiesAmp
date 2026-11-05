@@ -1,6 +1,7 @@
 import type { Song } from '/@/shared/types/domain-types';
 
 export type OfflineAlbum = {
+    automatic?: boolean;
     id: string;
     name: string;
     serverId: string;
@@ -9,7 +10,7 @@ export type OfflineAlbum = {
 };
 
 export type OfflineAlbumSyncRequest = {
-    album: Pick<OfflineAlbum, 'id' | 'name' | 'serverId'>;
+    album: Pick<OfflineAlbum, 'automatic' | 'id' | 'name' | 'serverId'>;
     silent?: boolean;
     tracks: OfflineDownloadRequest[];
 };
@@ -40,6 +41,7 @@ export type OfflineDownloadRequest = {
 };
 
 export type OfflineDownloadTask = {
+    automatic?: boolean;
     bytesDownloaded: number;
     bytesTotal: number;
     completed: number;

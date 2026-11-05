@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { api } from '/@/renderer/api';
 import { refreshOfflineDownloads } from '/@/renderer/features/offline/offline-download.store';
+import { suppressAutomaticAlbumForCurrentWindow } from '/@/renderer/features/offline/utils/automatic-album-download-state';
 import {
     getAlbumArtistSongsById,
     getAlbumSongsById,
@@ -63,7 +64,12 @@ export const useDownloadAction = ({ items, itemType }: DownloadActionProps) => {
         queryFn: async () => {
             const albums = await window.api.offline.listAlbums();
             return items.every((item) =>
-                albums.some((album) => album.serverId === server.id && album.id === item.id),
+                albums.some(
+                    (album) =>
+                        album.serverId === server.id &&
+                        album.id === item.id &&
+                        album.songIds.length > 0,
+                ),
             );
         },
         queryKey: [server.id, 'offline-album-status', ...items.map((item) => item.id)],
@@ -156,6 +162,25 @@ export const useDownloadAction = ({ items, itemType }: DownloadActionProps) => {
             }
 
             if (isAlbumSelection && offlineAlbumStatusQuery.data) {
+                const albumIds = new Set(items.map((item) => item.id));
+                const automaticTasks = (await window.api.offline.listDownloadTasks()).filter(
+                    (task) =>
+                        task.automatic &&
+                        task.serverId === server.id &&
+                        (task.state === 'downloading' || task.state === 'queued') &&
+                        task.itemIds.some((id) => albumIds.has(id)),
+                );
+                await Promise.all(
+                    automaticTasks.map((task) => window.api.offline.cancelDownload(task.id)),
+                );
+                for (const item of items) {
+                    suppressAutomaticAlbumForCurrentWindow(
+                        window.localStorage,
+                        server.id,
+                        server.userId,
+                        item.id,
+                    );
+                }
                 await Promise.all(
                     items.map((item) => window.api.offline.removeAlbum(server.id, item.id)),
                 );
@@ -269,6 +294,7 @@ export const useDownloadAction = ({ items, itemType }: DownloadActionProps) => {
         queryClient,
         resolveSongs,
         server.id,
+        server.userId,
         t,
     ]);
 

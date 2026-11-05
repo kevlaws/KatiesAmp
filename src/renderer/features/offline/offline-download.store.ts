@@ -81,9 +81,11 @@ const setSnapshot = (
     for (const album of albums) {
         const key = itemKey(album.serverId, album.id);
         albumsByKey[key] = album;
-        completeAlbums[key] = album.songIds.every((songId) =>
-            Boolean(entriesByKey[entryKey(album.serverId, songId)]),
-        );
+        completeAlbums[key] =
+            album.songIds.length > 0 &&
+            album.songIds.every((songId) =>
+                Boolean(entriesByKey[entryKey(album.serverId, songId)]),
+            );
     }
 
     const completePlaylists: Record<string, boolean> = {};

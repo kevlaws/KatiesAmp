@@ -24,6 +24,12 @@ import {
     SONG_TABLE_COLUMNS,
 } from '/@/renderer/components/item-list/item-table-list/default-columns';
 import {
+    AUTOMATIC_ALBUM_DOWNLOAD_DEFAULTS,
+    AUTOMATIC_ALBUM_DOWNLOAD_SETTINGS_MIGRATION_VERSION,
+    AutomaticAlbumDownloadSettingsSchema,
+    migrateAutomaticAlbumDownloadSettings,
+} from '/@/renderer/features/offline/utils/automatic-album-download-settings';
+import {
     migrateVolumeLevelingSettings,
     VOLUME_LEVELING_MIGRATION_VERSION,
 } from '/@/renderer/features/player/audio-player/utils/volume-leveling';
@@ -539,6 +545,7 @@ export const GeneralSettingsSchema = z.object({
     artistItems: z.array(SortableItemSchema(ArtistItemSchema)),
     artistRadioCount: z.number(),
     artistReleaseTypeItems: z.array(SortableItemSchema(ArtistReleaseTypeItemSchema)),
+    automaticAlbumDownloads: AutomaticAlbumDownloadSettingsSchema,
     autoSave: AutoSaveSchema,
     blurExplicitImages: z.boolean(),
     buttonSize: z.number(),
@@ -1371,6 +1378,7 @@ const initialState: SettingsState = {
         artistItems,
         artistRadioCount: 20,
         artistReleaseTypeItems,
+        automaticAlbumDownloads: { ...AUTOMATIC_ALBUM_DOWNLOAD_DEFAULTS },
         autoSave: {
             count: 10,
             enabled: false,
@@ -2434,6 +2442,7 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
             merge: mergeOverridingColumns,
             migrate(persistedState, version) {
                 const state = persistedState as SettingsSlice;
+                migrateAutomaticAlbumDownloadSettings(state, version);
 
                 if (version === 8) {
                     state.general.sidebarItems = state.general.sidebarItems.filter(
@@ -2944,6 +2953,7 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
             },
             name: 'store_settings',
             version: Math.max(
+                AUTOMATIC_ALBUM_DOWNLOAD_SETTINGS_MIGRATION_VERSION,
                 VOLUME_LEVELING_MIGRATION_VERSION,
                 KATIESAMP_SIDEBAR_MIGRATION_VERSION,
             ),
@@ -2959,6 +2969,9 @@ export const useTableSettings = (type: ItemListKey) =>
     useSettingsStore((state) => state.lists[type as keyof typeof state.lists]);
 
 export const useGeneralSettings = () => useSettingsStore((state) => state.general, shallow);
+
+export const useAutomaticAlbumDownloadSettings = () =>
+    useSettingsStore((state) => state.general.automaticAlbumDownloads, shallow);
 
 export const usePlaybackType = () => useSettingsStore((state) => state.playback.type, shallow);
 
