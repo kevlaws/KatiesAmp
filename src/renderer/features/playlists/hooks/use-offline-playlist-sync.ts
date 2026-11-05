@@ -140,7 +140,7 @@ export const useOfflinePlaylistSync = (
                     }
                 }
                 for (const album of albums) {
-                    if (album.serverId !== serverId) continue;
+                    if (album.serverId !== serverId || album.automatic) continue;
                     attempted = true;
                     try {
                         const response = await getAlbumSongsById({

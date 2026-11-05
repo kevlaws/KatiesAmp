@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import i18n, { languages } from '/@/i18n/i18n';
+import { isValidAutomaticAlbumDownloadTime } from '/@/renderer/features/offline/utils/automatic-album-download-settings';
 import { ImageResolutionSettings } from '/@/renderer/features/settings/components/general/art-resolution-settings';
 import {
     ArtistReleaseTypeSettings,
@@ -34,6 +35,7 @@ import { SegmentedControl } from '/@/shared/components/segmented-control/segment
 import { Select } from '/@/shared/components/select/select';
 import { Slider } from '/@/shared/components/slider/slider';
 import { Switch } from '/@/shared/components/switch/switch';
+import { TextInput } from '/@/shared/components/text-input/text-input';
 import { toast } from '/@/shared/components/toast/toast';
 import { PRODUCT_FEATURES } from '/@/shared/product-features';
 import { FontType } from '/@/shared/types/types';
@@ -145,6 +147,49 @@ export const ApplicationSettings = memo(() => {
     const fontSettings = useFontSettings();
     const { setSettings } = useSettingsStoreActions();
     const [localFonts, setLocalFonts] = useState<Font[]>([]);
+    const [automaticDownloadStartTime, setAutomaticDownloadStartTime] = useState(
+        settings.automaticAlbumDownloads.startTime,
+    );
+    const [automaticDownloadEndTime, setAutomaticDownloadEndTime] = useState(
+        settings.automaticAlbumDownloads.endTime,
+    );
+    const [automaticDownloadTimeErrors, setAutomaticDownloadTimeErrors] = useState<{
+        endTime?: string;
+        startTime?: string;
+    }>({});
+
+    useEffect(() => {
+        setAutomaticDownloadStartTime(settings.automaticAlbumDownloads.startTime);
+        setAutomaticDownloadEndTime(settings.automaticAlbumDownloads.endTime);
+    }, [settings.automaticAlbumDownloads.endTime, settings.automaticAlbumDownloads.startTime]);
+
+    const updateAutomaticDownloadWindow = useCallback(
+        (startTime: string, endTime: string) => {
+            const errors: { endTime?: string; startTime?: string } = {};
+
+            if (!isValidAutomaticAlbumDownloadTime(startTime)) {
+                errors.startTime = t('setting.automaticAlbumDownloadsInvalidTime');
+            }
+            if (!isValidAutomaticAlbumDownloadTime(endTime)) {
+                errors.endTime = t('setting.automaticAlbumDownloadsInvalidTime');
+            } else if (startTime === endTime) {
+                errors.endTime = t('setting.automaticAlbumDownloadsSameTime');
+            }
+
+            setAutomaticDownloadTimeErrors(errors);
+            if (errors.startTime || errors.endTime) return;
+
+            setSettings({
+                general: {
+                    automaticAlbumDownloads: {
+                        endTime,
+                        startTime,
+                    },
+                },
+            });
+        },
+        [setSettings, t],
+    );
 
     // const fontList = useMemo(() => {
     //     if (fontSettings.custom) {
@@ -235,6 +280,64 @@ export const ApplicationSettings = memo(() => {
     };
 
     const options: SettingOption[] = [
+        {
+            control: (
+                <Switch
+                    aria-label={t('setting.automaticAlbumDownloads')}
+                    checked={settings.automaticAlbumDownloads.enabled}
+                    onChange={(event) => {
+                        setSettings({
+                            general: {
+                                automaticAlbumDownloads: {
+                                    enabled: event.currentTarget.checked,
+                                },
+                            },
+                        });
+                    }}
+                />
+            ),
+            description: t('setting.automaticAlbumDownloads_description'),
+            isHidden: !isElectron(),
+            title: t('setting.automaticAlbumDownloads'),
+        },
+        {
+            control: (
+                <TextInput
+                    aria-label={t('setting.automaticAlbumDownloadsStartTime')}
+                    error={automaticDownloadTimeErrors.startTime}
+                    onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setAutomaticDownloadStartTime(value);
+                        updateAutomaticDownloadWindow(value, automaticDownloadEndTime);
+                    }}
+                    type="time"
+                    value={automaticDownloadStartTime}
+                    width={140}
+                />
+            ),
+            description: t('setting.automaticAlbumDownloadsStartTime_description'),
+            isHidden: !isElectron() || !settings.automaticAlbumDownloads.enabled,
+            title: t('setting.automaticAlbumDownloadsStartTime'),
+        },
+        {
+            control: (
+                <TextInput
+                    aria-label={t('setting.automaticAlbumDownloadsEndTime')}
+                    error={automaticDownloadTimeErrors.endTime}
+                    onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setAutomaticDownloadEndTime(value);
+                        updateAutomaticDownloadWindow(automaticDownloadStartTime, value);
+                    }}
+                    type="time"
+                    value={automaticDownloadEndTime}
+                    width={140}
+                />
+            ),
+            description: t('setting.automaticAlbumDownloadsEndTime_description'),
+            isHidden: !isElectron() || !settings.automaticAlbumDownloads.enabled,
+            title: t('setting.automaticAlbumDownloadsEndTime'),
+        },
         {
             control: (
                 <Select
