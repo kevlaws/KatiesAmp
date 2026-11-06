@@ -732,6 +732,7 @@ const PlayerFilterSchema = z.object({
 
 const PlaybackSettingsSchema = z.object({
     audioDeviceId: z.string().nullable().optional(),
+    audioDeviceLabel: z.string().nullable().optional(),
     audioFadeOnStatusChange: z.boolean(),
     compressor: CompressorSettingsSchema,
     consumeQueue: z.boolean(),
@@ -739,6 +740,7 @@ const PlaybackSettingsSchema = z.object({
     filters: z.array(PlayerFilterSchema),
     mediaSession: z.boolean(),
     mpvAudioDeviceId: z.string().nullable().optional(),
+    mpvAudioDeviceLabel: z.string().nullable().optional(),
     mpvExtraParameters: z.array(z.string()),
     mpvProperties: MpvSettingsSchema,
     preservePitch: z.boolean(),
@@ -2076,6 +2078,7 @@ const initialState: SettingsState = {
     },
     playback: {
         audioDeviceId: undefined,
+        audioDeviceLabel: undefined,
         audioFadeOnStatusChange: true,
         compressor: {
             attack: 20,
@@ -2108,6 +2111,7 @@ const initialState: SettingsState = {
         filters: [],
         mediaSession: false,
         mpvAudioDeviceId: undefined,
+        mpvAudioDeviceLabel: undefined,
         mpvExtraParameters: [],
         mpvProperties: {
             audioExclusiveMode: 'no',

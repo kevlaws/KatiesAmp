@@ -4,6 +4,13 @@ import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { eventEmitter } from '/@/renderer/events/event-emitter';
+import {
+    type AudioDeviceOption,
+    getAudioOutputPreference,
+    getWebAudioDevices,
+    includeUnavailableAudioDevice,
+    resolveAudioOutputDeviceId,
+} from '/@/renderer/features/player/audio-player/utils/audio-output';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
 import {
     SettingOption,
@@ -28,11 +35,6 @@ import { PlayerStatus, PlayerType } from '/@/shared/types/types';
 const ipc = isElectron() ? window.api.ipc : null;
 const mpvPlayer = isElectron() ? window.api.mpvPlayer : null;
 
-const getAudioDevices = async () => {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    return (devices || []).filter((dev: MediaDeviceInfo) => dev.kind === 'audiooutput');
-};
-
 const getMpvAudioDevices = async () => {
     if (!mpvPlayer) {
         return [];
@@ -45,8 +47,6 @@ const getMpvAudioDevices = async () => {
         return [];
     }
 };
-
-export type AudioDeviceOption = { label: string; value: string };
 
 export const getDefaultAudioDevice = (
     devices: AudioDeviceOption[],
@@ -61,43 +61,56 @@ export const useAudioDevices = (playbackType: PlayerType) => {
     const mpvInitialized = useMpvInitialized();
 
     useEffect(() => {
+        let isCancelled = false;
+
         const fetchAudioDevices = async () => {
             if (!isElectron()) {
                 return;
             }
 
             if (playbackType === PlayerType.WEB) {
-                getAudioDevices()
-                    .then((dev) => {
-                        const uniqueDevices = dev.filter(
-                            (d, index, self) =>
-                                index === self.findIndex((t) => t.deviceId === d.deviceId),
-                        );
-                        setAudioDevices(
-                            uniqueDevices.map((d) => ({ label: d.label, value: d.deviceId })),
-                        );
-                    })
-                    .catch(() =>
+                try {
+                    const devices = await getWebAudioDevices();
+                    if (!isCancelled) {
+                        setAudioDevices(devices);
+                    }
+                } catch {
+                    if (!isCancelled) {
                         toast.error({
                             message: t('error.audioDeviceFetchError'),
-                        }),
-                    );
+                        });
+                    }
+                }
             } else if (playbackType === PlayerType.LOCAL && mpvPlayer && mpvInitialized) {
                 try {
                     const devices = await getMpvAudioDevices();
                     const uniqueDevices = devices.filter(
                         (d, index, self) => index === self.findIndex((t) => t.value === d.value),
                     );
-                    setAudioDevices(uniqueDevices);
+                    if (!isCancelled) {
+                        setAudioDevices(uniqueDevices);
+                    }
                 } catch {
-                    toast.error({
-                        message: t('error.audioDeviceFetchError'),
-                    });
+                    if (!isCancelled) {
+                        toast.error({
+                            message: t('error.audioDeviceFetchError'),
+                        });
+                    }
                 }
             }
         };
 
-        fetchAudioDevices();
+        void fetchAudioDevices();
+
+        const mediaDevices = navigator.mediaDevices;
+        if (playbackType === PlayerType.WEB) {
+            mediaDevices?.addEventListener?.('devicechange', fetchAudioDevices);
+        }
+
+        return () => {
+            isCancelled = true;
+            mediaDevices?.removeEventListener?.('devicechange', fetchAudioDevices);
+        };
     }, [mpvInitialized, playbackType]);
 
     return audioDevices;
@@ -119,7 +132,19 @@ export const AudioSettings = memo(() => {
     const audioDevices = useAudioDevices(playbackType);
     const audioDeviceId =
         playbackType === PlayerType.LOCAL ? settings.mpvAudioDeviceId : settings.audioDeviceId;
+    const audioDeviceLabel =
+        playbackType === PlayerType.LOCAL
+            ? settings.mpvAudioDeviceLabel
+            : settings.audioDeviceLabel;
     const isCasting = settings.type === PlayerType.DLNA;
+    const audioDeviceOptions = includeUnavailableAudioDevice(audioDevices, {
+        deviceId: audioDeviceId,
+        deviceLabel: audioDeviceLabel,
+    });
+    const resolvedAudioDeviceId = resolveAudioOutputDeviceId(
+        { deviceId: audioDeviceId, deviceLabel: audioDeviceLabel },
+        audioDevices,
+    );
 
     // Dynamically build the options for the dropdown
     const selectData = [
@@ -176,17 +201,26 @@ export const AudioSettings = memo(() => {
             control: (
                 <Select
                     clearable
-                    data={audioDevices}
+                    data={audioDeviceOptions}
                     disabled={!isElectron()}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                        const preference = getAudioOutputPreference(e, audioDevices);
                         setSettings({
                             playback:
                                 playbackType === PlayerType.LOCAL
-                                    ? { mpvAudioDeviceId: e }
-                                    : { audioDeviceId: e },
-                        })
+                                    ? {
+                                          mpvAudioDeviceId: preference.deviceId,
+                                          mpvAudioDeviceLabel: preference.deviceLabel,
+                                      }
+                                    : {
+                                          audioDeviceId: preference.deviceId,
+                                          audioDeviceLabel: preference.deviceLabel,
+                                      },
+                        });
+                    }}
+                    value={
+                        resolvedAudioDeviceId ?? getDefaultAudioDevice(audioDevices, playbackType)
                     }
-                    value={audioDeviceId ?? getDefaultAudioDevice(audioDevices, playbackType)}
                 />
             ),
             description: t('setting.audioDevice', { context: 'description' }),

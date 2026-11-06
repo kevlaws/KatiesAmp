@@ -4,6 +4,11 @@ import { useTranslation } from 'react-i18next';
 
 import { PopoverPlayQueue } from '/@/renderer/features/now-playing/components/popover-play-queue';
 import { OfflineDownloadManager } from '/@/renderer/features/offline/components/offline-download-manager';
+import {
+    getAudioOutputPreference,
+    includeUnavailableAudioDevice,
+    resolveAudioOutputDeviceId,
+} from '/@/renderer/features/player/audio-player/utils/audio-output';
 import { DlnaVolumeButton } from '/@/renderer/features/player/components/dlna/volume-button';
 import { PlayerConfig } from '/@/renderer/features/player/components/player-config';
 import { CustomPlayerbarSlider } from '/@/renderer/features/player/components/playerbar-slider';
@@ -317,17 +322,34 @@ const VolumeButton = () => {
         playbackType === PlayerType.LOCAL
             ? playbackSettings.mpvAudioDeviceId
             : playbackSettings.audioDeviceId;
+    const currentAudioDeviceLabel =
+        playbackType === PlayerType.LOCAL
+            ? playbackSettings.mpvAudioDeviceLabel
+            : playbackSettings.audioDeviceLabel;
+    const audioDevicePreference = {
+        deviceId: currentAudioDeviceId,
+        deviceLabel: currentAudioDeviceLabel,
+    };
+    const resolvedAudioDeviceId = resolveAudioOutputDeviceId(audioDevicePreference, audioDevices);
+    const audioDeviceOptions = includeUnavailableAudioDevice(audioDevices, audioDevicePreference);
 
     const handleSelectAudioDevice = useCallback(
         (deviceId: null | string) => {
+            const preference = getAudioOutputPreference(deviceId, audioDevices);
             setSettings({
                 playback:
                     playbackType === PlayerType.LOCAL
-                        ? { mpvAudioDeviceId: deviceId }
-                        : { audioDeviceId: deviceId },
+                        ? {
+                              mpvAudioDeviceId: preference.deviceId,
+                              mpvAudioDeviceLabel: preference.deviceLabel,
+                          }
+                        : {
+                              audioDeviceId: preference.deviceId,
+                              audioDeviceLabel: preference.deviceLabel,
+                          },
             });
         },
-        [playbackType, setSettings],
+        [audioDevices, playbackType, setSettings],
     );
 
     const [sliderValue, setSliderValue] = useState(volume);
@@ -421,10 +443,11 @@ const VolumeButton = () => {
                     >
                         {t('setting.audioDeviceDefault', { defaultValue: 'System default' })}
                     </ContextMenu.Item>
-                    {audioDevices.length > 0 && <ContextMenu.Divider />}
-                    {audioDevices.map((device) => (
+                    {audioDeviceOptions.length > 0 && <ContextMenu.Divider />}
+                    {audioDeviceOptions.map((device) => (
                         <ContextMenu.Item
-                            isSelected={device.value === currentAudioDeviceId}
+                            disabled={device.disabled}
+                            isSelected={device.value === resolvedAudioDeviceId}
                             key={device.value}
                             onSelect={() => handleSelectAudioDevice(device.value)}
                         >
