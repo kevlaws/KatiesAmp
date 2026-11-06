@@ -9,6 +9,13 @@ import { MainPlayerListenerHook } from '/@/renderer/features/player/audio-player
 import { JukeboxPlayer } from '/@/renderer/features/player/audio-player/jukebox-player';
 import { MpvPlayer } from '/@/renderer/features/player/audio-player/mpv-player';
 import {
+    applyAudioOutputPreference,
+    AUDIO_OUTPUT_RECOVERY_RETRY_MS,
+    AUDIO_OUTPUT_RETRY_DELAYS_MS,
+    getWebAudioDevices,
+    supportsAudioSinkSelection,
+} from '/@/renderer/features/player/audio-player/utils/audio-output';
+import {
     configureCompressorNode,
     decibelsToLinear,
     getVolumeLevelerParameters,
@@ -155,6 +162,7 @@ export const AudioPlayers = () => {
     const { resetSampleRate } = useSettingsStoreActions();
     const {
         audioDeviceId,
+        audioDeviceLabel,
         mpvProperties: { audioSampleRateHz },
         webAudio,
     } = usePlaybackSettings();
@@ -187,6 +195,7 @@ export const AudioPlayers = () => {
             <AudioPlayersContent
                 audioContext={audioContext}
                 audioDeviceId={audioDeviceId}
+                audioDeviceLabel={audioDeviceLabel}
                 audioSampleRateHz={audioSampleRateHz}
                 playbackType={playbackType}
                 resetSampleRate={resetSampleRate}
@@ -203,6 +212,7 @@ const mpvPlayerListener = isElectron() ? window.api.mpvPlayerListener : null;
 const AudioPlayersContent = ({
     audioContext,
     audioDeviceId,
+    audioDeviceLabel,
     audioSampleRateHz,
     playbackType,
     resetSampleRate,
@@ -212,6 +222,7 @@ const AudioPlayersContent = ({
 }: {
     audioContext: ReturnType<typeof useWebAudio>['webAudio'];
     audioDeviceId: null | string | undefined;
+    audioDeviceLabel: null | string | undefined;
     audioSampleRateHz: number | undefined;
     playbackType: PlayerType;
     resetSampleRate: ReturnType<typeof useSettingsStoreActions>['resetSampleRate'];
@@ -220,6 +231,7 @@ const AudioPlayersContent = ({
     webAudio: boolean;
 }) => {
     const isRadioActive = useIsRadioActive();
+    const { setSettings } = useSettingsStoreActions();
     const { compressor, equalizer, volumeLevelingMode } = usePlaybackSettings();
 
     useEffect(() => {
@@ -389,31 +401,147 @@ const AudioPlayersContent = ({
     }, [audioContext]);
 
     useEffect(() => {
-        // Not standard, just used in chromium-based browsers. See
-        // https://developer.chrome.com/blog/audiocontext-setsinkid/.
-
-        if (!isElectron()) {
+        // Chromium can move an AudioContext back to the Windows default when an
+        // endpoint is late to appear or briefly disconnects. Keep the saved
+        // preference and actively reassert it instead of silently accepting that
+        // fallback. When Web Audio is disabled, route the HTML audio elements.
+        if (!isElectron() || playbackType !== PlayerType.WEB) {
             return;
         }
 
-        if (playbackType !== PlayerType.WEB) {
-            return;
-        }
+        let isCancelled = false;
+        let hasShownUnavailableToast = false;
+        const retryTimers = new Set<ReturnType<typeof setTimeout>>();
+        const mediaDevices = navigator.mediaDevices;
 
-        if (audioContext && 'setSinkId' in audioContext.context && audioDeviceId) {
-            const setSink = async () => {
-                try {
-                    if (audioContext.context.state !== 'closed') {
-                        await (audioContext.context as any).setSinkId(audioDeviceId);
-                    }
-                } catch (error) {
-                    toast.error({ message: `Error setting sink: ${(error as Error).message}` });
+        const getTargets = () => {
+            if (
+                audioContext?.context &&
+                audioContext.context.state !== 'closed' &&
+                supportsAudioSinkSelection(audioContext.context)
+            ) {
+                return [audioContext.context];
+            }
+
+            if (!webAudio) {
+                return [...document.querySelectorAll('audio')].filter(supportsAudioSinkSelection);
+            }
+
+            return [];
+        };
+
+        const applyPreferredOutput = async (showUnavailableToast = false) => {
+            const targets = getTargets();
+            if (isCancelled || targets.length === 0) {
+                return;
+            }
+
+            let devices: Awaited<ReturnType<typeof getWebAudioDevices>> = [];
+            try {
+                devices = await getWebAudioDevices();
+            } catch (error) {
+                logger.warn('Failed to enumerate audio outputs while restoring selection', {
+                    error: String(error),
+                });
+            }
+
+            if (isCancelled) {
+                return;
+            }
+
+            if (audioDeviceId && !audioDeviceLabel) {
+                const selectedDevice = devices.find((device) => device.value === audioDeviceId);
+                if (selectedDevice?.label) {
+                    setSettings({
+                        playback: { audioDeviceLabel: selectedDevice.label },
+                    });
                 }
-            };
+            }
 
-            setSink();
-        }
-    }, [audioContext, audioDeviceId, playbackType]);
+            const preference = {
+                deviceId: audioDeviceId,
+                deviceLabel: audioDeviceLabel,
+            };
+            const results = await Promise.allSettled(
+                targets.map((target) => applyAudioOutputPreference(target, preference, devices)),
+            );
+            const failures = results.filter((result) => result.status === 'rejected');
+
+            if (failures.length === 0) {
+                hasShownUnavailableToast = false;
+                return;
+            }
+
+            logger.warn('Failed to restore selected audio output', {
+                audioDeviceId,
+                error: String((failures[0] as PromiseRejectedResult).reason),
+            });
+
+            if (showUnavailableToast && audioDeviceId) {
+                if (!hasShownUnavailableToast) {
+                    hasShownUnavailableToast = true;
+                    toast.error({
+                        message:
+                            'Selected audio output is unavailable. KatiesAmp will keep retrying it.',
+                    });
+                }
+
+                const recoveryTimer = setTimeout(() => {
+                    retryTimers.delete(recoveryTimer);
+                    void applyPreferredOutput(true);
+                }, AUDIO_OUTPUT_RECOVERY_RETRY_MS);
+                retryTimers.add(recoveryTimer);
+            }
+        };
+
+        const scheduleRetries = () => {
+            for (const timer of retryTimers) {
+                clearTimeout(timer);
+            }
+            retryTimers.clear();
+
+            AUDIO_OUTPUT_RETRY_DELAYS_MS.forEach((delay, index) => {
+                const timer = setTimeout(() => {
+                    retryTimers.delete(timer);
+                    void applyPreferredOutput(index === AUDIO_OUTPUT_RETRY_DELAYS_MS.length - 1);
+                }, delay);
+                retryTimers.add(timer);
+            });
+        };
+
+        const handleDeviceChange = () => {
+            scheduleRetries();
+        };
+
+        scheduleRetries();
+        mediaDevices?.addEventListener?.('devicechange', handleDeviceChange);
+
+        const observer = !webAudio
+            ? new MutationObserver((records) => {
+                  const addedAudioElement = records.some((record) =>
+                      [...record.addedNodes].some(
+                          (node) =>
+                              node instanceof HTMLAudioElement ||
+                              (node instanceof Element && Boolean(node.querySelector('audio'))),
+                      ),
+                  );
+                  if (addedAudioElement) {
+                      void applyPreferredOutput();
+                  }
+              })
+            : null;
+        observer?.observe(document.body, { childList: true, subtree: true });
+
+        return () => {
+            isCancelled = true;
+            for (const timer of retryTimers) {
+                clearTimeout(timer);
+            }
+            retryTimers.clear();
+            mediaDevices?.removeEventListener?.('devicechange', handleDeviceChange);
+            observer?.disconnect();
+        };
+    }, [audioContext, audioDeviceId, audioDeviceLabel, playbackType, setSettings, webAudio]);
 
     // Listen to favorite and rating events to update queue songs
     useEffect(() => {

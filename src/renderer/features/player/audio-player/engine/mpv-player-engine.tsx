@@ -9,6 +9,10 @@ import { eventEmitter } from '/@/renderer/events/event-emitter';
 import { usePlayerEvents } from '/@/renderer/features/player/audio-player/hooks/use-player-events';
 import { getSongUrl } from '/@/renderer/features/player/audio-player/hooks/use-stream-url';
 import { AudioPlayer, PlayerOnProgressProps } from '/@/renderer/features/player/audio-player/types';
+import {
+    AUDIO_OUTPUT_RETRY_DELAYS_MS,
+    resolveAudioOutputDeviceId,
+} from '/@/renderer/features/player/audio-player/utils/audio-output';
 import { useRadioStore } from '/@/renderer/features/radio/hooks/use-radio-player';
 import { getMpvProperties } from '/@/renderer/features/settings/components/playback/mpv-properties';
 import {
@@ -19,6 +23,7 @@ import {
     usePlayerSong,
     usePlayerStore,
     useSettingsStore,
+    useSettingsStoreActions,
 } from '/@/renderer/store';
 import { logger } from '/@/renderer/utils/logger';
 import { PlayerStatus } from '/@/shared/types/types';
@@ -59,13 +64,14 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
     const [internalVolume, setInternalVolume] = useState(volume / 100 || 0);
     const isInitialized = useMpvInitialized();
     const currentSong = usePlayerSong();
+    const { setSettings } = useSettingsStoreActions();
 
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const hasPopulatedQueueRef = useRef<boolean>(false);
     const isMountedRef = useRef<boolean>(true);
     const [initializationTick, setInitializationTick] = useState(0);
 
-    const { mpvAudioDeviceId, transcode } = usePlaybackSettings();
+    const { mpvAudioDeviceId, mpvAudioDeviceLabel, transcode } = usePlaybackSettings();
     const mpvExtraParameters = useSettingsStore((store) => store.playback.mpvExtraParameters);
     const mpvProperties = useSettingsStore((store) => store.playback.mpvProperties);
     const [reloadTrigger, setReloadTrigger] = useState(0);
@@ -215,6 +221,86 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
         // reloadTrigger is included to allow manual reload via MPV_RELOAD event.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mpvExtraParameters, mpvProperties, mpvAudioDeviceId, reloadTrigger]);
+
+    useEffect(() => {
+        if (!mpvPlayer || !isInitialized) {
+            return;
+        }
+
+        let isCancelled = false;
+        const retryTimers = new Set<ReturnType<typeof setTimeout>>();
+        const mediaDevices = navigator.mediaDevices;
+
+        const applyPreferredOutput = async () => {
+            let devices: Awaited<ReturnType<typeof mpvPlayer.getAudioDevices>> = [];
+            try {
+                devices = await mpvPlayer.getAudioDevices();
+            } catch (error) {
+                logger.warn('Failed to enumerate MPV audio outputs while restoring selection', {
+                    error: String(error),
+                });
+            }
+
+            if (isCancelled) {
+                return;
+            }
+
+            if (mpvAudioDeviceId && !mpvAudioDeviceLabel) {
+                const selectedDevice = devices.find((device) => device.value === mpvAudioDeviceId);
+                if (selectedDevice?.label) {
+                    setSettings({
+                        playback: { mpvAudioDeviceLabel: selectedDevice.label },
+                    });
+                }
+            }
+
+            const resolvedDeviceId = resolveAudioOutputDeviceId(
+                {
+                    deviceId: mpvAudioDeviceId,
+                    deviceLabel: mpvAudioDeviceLabel,
+                },
+                devices,
+            );
+
+            try {
+                mpvPlayer.setProperties({
+                    'audio-device': resolvedDeviceId?.trim() || 'auto',
+                });
+            } catch (error) {
+                logger.warn('Failed to restore selected MPV audio output', {
+                    error: String(error),
+                    mpvAudioDeviceId,
+                });
+            }
+        };
+
+        const scheduleRetries = () => {
+            for (const timer of retryTimers) {
+                clearTimeout(timer);
+            }
+            retryTimers.clear();
+
+            for (const delay of AUDIO_OUTPUT_RETRY_DELAYS_MS) {
+                const timer = setTimeout(() => {
+                    retryTimers.delete(timer);
+                    void applyPreferredOutput();
+                }, delay);
+                retryTimers.add(timer);
+            }
+        };
+
+        scheduleRetries();
+        mediaDevices?.addEventListener?.('devicechange', scheduleRetries);
+
+        return () => {
+            isCancelled = true;
+            for (const timer of retryTimers) {
+                clearTimeout(timer);
+            }
+            retryTimers.clear();
+            mediaDevices?.removeEventListener?.('devicechange', scheduleRetries);
+        };
+    }, [isInitialized, mpvAudioDeviceId, mpvAudioDeviceLabel, setSettings]);
 
     // Update volume
     useEffect(() => {

@@ -3,6 +3,11 @@ import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { eventEmitter } from '/@/renderer/events/event-emitter';
+import {
+    getAudioOutputPreference,
+    includeUnavailableAudioDevice,
+    resolveAudioOutputDeviceId,
+} from '/@/renderer/features/player/audio-player/utils/audio-output';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
 import {
     getDefaultAudioDevice,
@@ -311,24 +316,43 @@ const AudioDeviceConfig = () => {
         playbackType === PlayerType.LOCAL
             ? playbackSettings.mpvAudioDeviceId
             : playbackSettings.audioDeviceId;
+    const audioDeviceLabel =
+        playbackType === PlayerType.LOCAL
+            ? playbackSettings.mpvAudioDeviceLabel
+            : playbackSettings.audioDeviceLabel;
+    const audioDeviceOptions = includeUnavailableAudioDevice(audioDevices, {
+        deviceId: audioDeviceId,
+        deviceLabel: audioDeviceLabel,
+    });
+    const resolvedAudioDeviceId = resolveAudioOutputDeviceId(
+        { deviceId: audioDeviceId, deviceLabel: audioDeviceLabel },
+        audioDevices,
+    );
 
     return (
         <Select
             comboboxProps={{ withinPortal: false }}
-            data={audioDevices}
+            data={audioDeviceOptions}
             disabled={status === PlayerStatus.PLAYING}
             key={playbackType}
             onChange={(e) => {
+                const preference = getAudioOutputPreference(e, audioDevices);
                 setSettings({
                     playback: {
                         ...playbackSettings,
                         ...(playbackType === PlayerType.LOCAL
-                            ? { mpvAudioDeviceId: e }
-                            : { audioDeviceId: e }),
+                            ? {
+                                  mpvAudioDeviceId: preference.deviceId,
+                                  mpvAudioDeviceLabel: preference.deviceLabel,
+                              }
+                            : {
+                                  audioDeviceId: preference.deviceId,
+                                  audioDeviceLabel: preference.deviceLabel,
+                              }),
                     },
                 });
             }}
-            value={audioDeviceId ?? getDefaultAudioDevice(audioDevices, playbackType)}
+            value={resolvedAudioDeviceId ?? getDefaultAudioDevice(audioDevices, playbackType)}
             variant="filled"
             width="100%"
         />

@@ -51,6 +51,161 @@ const measureOutput = (page, sampleCount = 16) =>
         };
     }, sampleCount);
 
+test('@full keeps the selected Windows audio output through an update and reasserts it', async ({
+    page,
+}) => {
+    await page.addInitScript(() => {
+        window.__katiesAmpSinkCalls = [];
+        window.__katiesAmpActiveSink = '';
+        window.__katiesAmpSinkAvailable = sessionStorage.getItem('sink-available') === 'true';
+
+        if (sessionStorage.getItem('audio-output-seeded') !== 'true') {
+            const persistedSettings = JSON.parse(
+                localStorage.getItem('store_settings') || '{"state":{}}',
+            );
+            localStorage.setItem(
+                'store_settings',
+                JSON.stringify({
+                    ...persistedSettings,
+                    state: {
+                        ...persistedSettings.state,
+                        playback: {
+                            ...persistedSettings.state?.playback,
+                            audioDeviceId: 'venue-output',
+                            type: 'web',
+                            webAudio: true,
+                        },
+                    },
+                    // Simulate the persisted store from the immediately previous release.
+                    version: 38,
+                }),
+            );
+            sessionStorage.setItem('audio-output-seeded', 'true');
+        }
+
+        Object.defineProperty(AudioContext.prototype, 'setSinkId', {
+            configurable: true,
+            value: async function setSinkId(sinkId) {
+                window.__katiesAmpSinkCalls.push(sinkId);
+                if (!window.__katiesAmpSinkAvailable) {
+                    throw new DOMException('Audio endpoint is not ready', 'NotFoundError');
+                }
+                window.__katiesAmpActiveSink = sinkId;
+            },
+        });
+
+        Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+            configurable: true,
+            value: async () => [
+                {
+                    deviceId: 'default',
+                    groupId: 'default-group',
+                    kind: 'audiooutput',
+                    label: 'System default',
+                    toJSON: () => ({}),
+                },
+                {
+                    deviceId: 'venue-output',
+                    groupId: 'venue-group',
+                    kind: 'audiooutput',
+                    label: 'Venue USB Audio',
+                    toJSON: () => ({}),
+                },
+            ],
+        });
+    });
+
+    await page.reload();
+    await login(page);
+
+    await expect
+        .poll(() => page.evaluate(() => window.__katiesAmpSinkCalls.includes('venue-output')))
+        .toBe(true);
+
+    await page.evaluate(() => {
+        window.__katiesAmpSinkAvailable = true;
+        sessionStorage.setItem('sink-available', 'true');
+        navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+    });
+    await expect.poll(() => page.evaluate(() => window.__katiesAmpActiveSink)).toBe('venue-output');
+
+    const storedPreference = await page.evaluate(() => {
+        const playback = JSON.parse(localStorage.getItem('store_settings') || '{"state":{}}').state
+            ?.playback;
+        return {
+            deviceId: playback?.audioDeviceId,
+            deviceLabel: playback?.audioDeviceLabel,
+        };
+    });
+    expect(storedPreference).toEqual({
+        deviceId: 'venue-output',
+        deviceLabel: 'Venue USB Audio',
+    });
+
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => window.__katiesAmpActiveSink)).toBe('venue-output');
+});
+
+test('@full routes HTML audio to the saved output when Web Audio is disabled', async ({ page }) => {
+    await page.addInitScript(() => {
+        window.__katiesAmpElementSinkCalls = [];
+        if (sessionStorage.getItem('audio-output-seeded') !== 'true') {
+            const persistedSettings = JSON.parse(
+                localStorage.getItem('store_settings') || '{"state":{}}',
+            );
+            localStorage.setItem(
+                'store_settings',
+                JSON.stringify({
+                    ...persistedSettings,
+                    state: {
+                        ...persistedSettings.state,
+                        playback: {
+                            ...persistedSettings.state?.playback,
+                            audioDeviceId: 'venue-output',
+                            audioDeviceLabel: 'Venue USB Audio',
+                            type: 'web',
+                            webAudio: false,
+                        },
+                    },
+                }),
+            );
+            sessionStorage.setItem('audio-output-seeded', 'true');
+        }
+        Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', {
+            configurable: true,
+            value: async function setSinkId(sinkId) {
+                window.__katiesAmpElementSinkCalls.push(sinkId);
+            },
+        });
+        Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+            configurable: true,
+            value: async () => [
+                {
+                    deviceId: 'venue-output',
+                    groupId: 'venue-group',
+                    kind: 'audiooutput',
+                    label: 'Venue USB Audio',
+                    toJSON: () => ({}),
+                },
+            ],
+        });
+    });
+
+    await page.reload();
+    await login(page);
+    await navigateTo(page, '/library/songs');
+
+    const firstSong = getSongCell(page, 'Automation Track 1');
+    await expect(firstSong).toBeVisible({ timeout: 15_000 });
+    await firstSong.dblclick();
+
+    await expect
+        .poll(() =>
+            page.evaluate(() => window.__katiesAmpElementSinkCalls.includes('venue-output')),
+        )
+        .toBe(true);
+});
+
 test('@nightly measures levelling, limiting, and crossfade through the live Web Audio graph', async ({
     page,
 }) => {
