@@ -1,3 +1,5 @@
+import type { SeasonalHomeLogo } from '/@/renderer/features/home/utils/seasonal-home-logo';
+
 import { useEffect, useState } from 'react';
 
 import packageJson from '../../../../../package.json';
@@ -5,7 +7,14 @@ import styles from './home-route.module.css';
 
 import { controller } from '/@/renderer/api/controller';
 import { NativeScrollArea } from '/@/renderer/components/native-scroll-area/native-scroll-area';
-import companyLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
+import christmasLogo from '/@/renderer/features/home/assets/katie-obriens-logo-christmas.png';
+import easterLogo from '/@/renderer/features/home/assets/katie-obriens-logo-easter.png';
+import halloweenLogo from '/@/renderer/features/home/assets/katie-obriens-logo-halloween.png';
+import newYearLogo from '/@/renderer/features/home/assets/katie-obriens-logo-new-year.png';
+import remembranceLogo from '/@/renderer/features/home/assets/katie-obriens-logo-remembrance.png';
+import stPatricksLogo from '/@/renderer/features/home/assets/katie-obriens-logo-st-patricks.png';
+import standardLogo from '/@/renderer/features/home/assets/katie-obriens-logo.webp';
+import { useSeasonalHomeLogo } from '/@/renderer/features/home/hooks/use-seasonal-home-logo';
 import { AnimatedPage } from '/@/renderer/features/shared/components/animated-page';
 import { PageErrorBoundary } from '/@/renderer/features/shared/components/page-error-boundary';
 import { useServerLibraryControls } from '/@/renderer/features/shared/hooks/use-server-library-controls';
@@ -17,6 +26,15 @@ import { Select } from '/@/shared/components/select/select';
 const SUPPORT_EMAIL = 'k.laws@katieobriensirishtaverns.com';
 const SUPPORT_PHONE = '07969 765 597';
 const CONNECTION_CHECK_INTERVAL_MS = 60_000;
+const COMPANY_LOGOS: Record<SeasonalHomeLogo, string> = {
+    christmas: christmasLogo,
+    easter: easterLogo,
+    halloween: halloweenLogo,
+    'new-year': newYearLogo,
+    remembrance: remembranceLogo,
+    'st-patricks': stPatricksLogo,
+    standard: standardLogo,
+};
 
 type ConnectionStatus = 'checking' | 'connected' | 'not-connected' | 'offline' | 'unavailable';
 
@@ -109,6 +127,7 @@ const useServerConnectionStatus = (serverId?: string) => {
 const HomeRoute = () => {
     const server = useCurrentServer();
     const updateState = useAppUpdateState();
+    const seasonalLogo = useSeasonalHomeLogo();
     const [installingUpdate, setInstallingUpdate] = useState(false);
     const connectionStatus = useServerConnectionStatus(server?.id);
     const { musicFolders, musicFoldersQuery, selectedMusicFolders, selectMusicFolder } =
@@ -151,7 +170,7 @@ const HomeRoute = () => {
                                 <img
                                     alt="Katie O'Brien's Irish Taverns"
                                     className={styles.companyLogo}
-                                    src={companyLogo}
+                                    src={COMPANY_LOGOS[seasonalLogo]}
                                 />
                             </div>
 

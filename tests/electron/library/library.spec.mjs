@@ -42,6 +42,9 @@ test('@full loads songs from Jellyfin', async ({ page }) => {
     await expect(playAction).toBeVisible();
     await expect(playNextAction).toBeVisible();
     await expect(playLastAction).toBeVisible();
+    for (const label of ['Share item', 'Edit Metadata', 'Get info']) {
+        await expect(page.getByRole('menuitem', { exact: true, name: label })).toHaveCount(0);
+    }
 
     const playBox = await playAction.boundingBox();
     const playNextBox = await playNextAction.boundingBox();
@@ -116,6 +119,23 @@ test('@full loads playlists from Jellyfin', async ({ page }) => {
     });
 });
 
+test('@full keeps playlist track menus focused on playback and queue actions', async ({ page }) => {
+    await navigateTo(page, '/playlists/playlist-1/songs');
+    await expect(page.getByRole('heading', { level: 1, name: 'Automation Playlist' })).toBeVisible({
+        timeout: 15_000,
+    });
+
+    await getSongCell(page, 'Automation Track 1').click({ button: 'right' });
+    for (const label of ['Play', 'Add to queue next', 'Add to end of queue']) {
+        await expect(
+            page.getByRole('menuitem', { exact: true, name: label }).first(),
+        ).toBeVisible();
+    }
+    for (const label of ['Share item', 'Edit Metadata', 'Get info']) {
+        await expect(page.getByRole('menuitem', { exact: true, name: label })).toHaveCount(0);
+    }
+});
+
 test('@full keeps the album detail screen focused on playback', async ({ page }) => {
     await navigateTo(page, '/library/albums/album-1');
     const heading = page.getByRole('heading', { level: 1, name: 'Automation Album' });
@@ -131,6 +151,7 @@ test('@full keeps the album detail screen focused on playback', async ({ page })
     await expect(header.getByRole('button', { exact: true, name: 'Next' })).toHaveCount(0);
     await expect(header.getByRole('button', { exact: true, name: 'Last' })).toHaveCount(0);
     await expect(header.getByRole('button', { exact: true, name: 'Album radio' })).toHaveCount(0);
+    await expect(header.getByRole('button', { exact: true, name: 'More options' })).toHaveCount(0);
     await expect(header.getByRole('link', { exact: true, name: 'Automation Artist' })).toHaveCount(
         0,
     );
@@ -143,6 +164,9 @@ test('@full keeps the album detail screen focused on playback', async ({ page })
         await expect(
             page.getByRole('menuitem', { exact: true, name: label }).first(),
         ).toBeVisible();
+    }
+    for (const label of ['Share item', 'Edit Metadata', 'Get info']) {
+        await expect(page.getByRole('menuitem', { exact: true, name: label })).toHaveCount(0);
     }
 });
 

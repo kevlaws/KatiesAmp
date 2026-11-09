@@ -7,7 +7,6 @@ import styles from './album-detail-header.module.css';
 
 import { albumQueries } from '/@/renderer/features/albums/api/album-api';
 import { useDownloadAction } from '/@/renderer/features/context-menu/actions/download-action';
-import { ContextMenuController } from '/@/renderer/features/context-menu/context-menu-controller';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
 import {
     LibraryHeader,
@@ -89,14 +88,6 @@ export const AlbumDetailHeader = forwardRef<HTMLDivElement>((_props, ref) => {
     const handlePlay = (type?: Play) => {
         if (!server?.id || !albumId) return;
         addToQueueByFetch(server.id, [albumId], LibraryItem.ALBUM, type || playButtonBehavior);
-    };
-
-    const handleMoreOptions = (e: React.MouseEvent<HTMLButtonElement>) => {
-        if (!detailQuery?.data) return;
-        ContextMenuController.call({
-            cmd: { items: [detailQuery.data], type: LibraryItem.ALBUM },
-            event: e,
-        });
     };
 
     const metadataItems = useMemo(() => {
@@ -213,7 +204,6 @@ export const AlbumDetailHeader = forwardRef<HTMLDivElement>((_props, ref) => {
                         isDownloadPending={downloadAction.isPending}
                         onDownload={() => void downloadAction.onSelect()}
                         onFavorite={handleFavorite}
-                        onMore={handleMoreOptions}
                         onPlay={(type) => handlePlay(type)}
                         onRating={handleUpdateRating}
                         onShuffle={() => handlePlay(Play.SHUFFLE)}
