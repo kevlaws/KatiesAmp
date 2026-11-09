@@ -143,6 +143,9 @@ test('@full exposes Play, Next, and Last directly on queue items', async ({ page
     await expect(playAction).toBeVisible();
     await expect(nextAction).toBeVisible();
     await expect(lastAction).toBeVisible();
+    for (const label of ['Share item', 'Edit Metadata', 'Get info']) {
+        await expect(page.getByRole('menuitem', { exact: true, name: label })).toHaveCount(0);
+    }
 
     const playBox = await playAction.boundingBox();
     const nextBox = await nextAction.boundingBox();

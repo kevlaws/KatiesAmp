@@ -54,13 +54,15 @@ test('@full provides one global track-only results page', async ({ mockJellyfin,
         'Add to queue next',
         'Add to end of queue',
         'Download for offline use',
-        'Get info',
     ]) {
         await expect(
             page.getByRole('menuitem', { exact: true, name: label }).first(),
         ).toBeVisible();
     }
     await expect(page.getByRole('menuitem', { name: 'Track radio' })).toHaveCount(0);
+    for (const label of ['Share item', 'Edit Metadata', 'Get info']) {
+        await expect(page.getByRole('menuitem', { exact: true, name: label })).toHaveCount(0);
+    }
     await page.keyboard.press('Escape');
     await expect(page.getByText('External links', { exact: false })).toHaveCount(0);
     await expect(page.getByText('Artist radio', { exact: false })).toHaveCount(0);

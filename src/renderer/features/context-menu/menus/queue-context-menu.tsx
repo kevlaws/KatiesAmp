@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
 import { DownloadAction } from '/@/renderer/features/context-menu/actions/download-action';
-import { GetInfoAction } from '/@/renderer/features/context-menu/actions/get-info-action';
 import { GoToAction } from '/@/renderer/features/context-menu/actions/go-to-action';
 import { MoveQueueItemsAction } from '/@/renderer/features/context-menu/actions/move-queue-items-action';
 import { PlayAction } from '/@/renderer/features/context-menu/actions/play-action';
@@ -44,8 +43,6 @@ export const QueueContextMenu = ({ items }: QueueContextMenuProps) => {
             <DownloadAction items={items} itemType={LibraryItem.QUEUE_SONG} />
             <ContextMenu.Divider />
             <GoToAction items={items} />
-            <ContextMenu.Divider />
-            <GetInfoAction disabled={items.length === 0} items={items} />
         </ContextMenu.Content>
     );
 };
