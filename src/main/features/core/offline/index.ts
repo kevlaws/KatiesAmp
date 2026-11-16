@@ -52,6 +52,7 @@ const OFFLINE_DIRECTORY_SETTING = 'offline_download_directory';
 const activeJobs = new Map<string, { cancelled: boolean; controllers: Set<AbortController> }>();
 const downloadTasks = new Map<string, OfflineDownloadTask>();
 const lastTaskEmit = new Map<string, number>();
+const trackDownloadLocks = new Map<string, Promise<void>>();
 let activeDownloadCount = 0;
 let downloadTaskUpdate = Promise.resolve();
 const downloadWaiters: Array<() => void> = [];
@@ -229,6 +230,25 @@ const acquireDownloadSlot = async () => {
     return () => {
         activeDownloadCount -= 1;
         downloadWaiters.shift()?.();
+    };
+};
+
+const acquireTrackDownloadLock = async (key: string) => {
+    const previous = trackDownloadLocks.get(key) ?? Promise.resolve();
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolve) => {
+        releaseCurrent = resolve;
+    });
+    const queued = previous.then(() => current);
+    trackDownloadLocks.set(key, queued);
+    await previous;
+
+    let released = false;
+    return () => {
+        if (released) return;
+        released = true;
+        releaseCurrent();
+        if (trackDownloadLocks.get(key) === queued) trackDownloadLocks.delete(key);
     };
 };
 
@@ -493,17 +513,63 @@ const download = async (
     onBytes?: (bytes: number) => void,
     signal?: AbortSignal,
 ): Promise<OfflineEntry> => {
+    const entryKey = getEntryKey(request.song._serverId, request.song.id);
     const serverDirectory = hashPart(request.song._serverId);
     const relativeFileName = path.join(
         serverDirectory,
         `${hashPart(request.song.id)}.${getExtension(request)}`,
     );
     const destinationPath = path.join(getOfflineRoot(), relativeFileName);
-    const temporaryPath = `${destinationPath}.part`;
-
-    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+    const temporaryPath = `${destinationPath}.${randomUUID()}.part`;
+    const releaseTrack = await acquireTrackDownloadLock(entryKey);
 
     try {
+        signal?.throwIfAborted();
+        const manifest = await readManifestSnapshot();
+        const reusableEntry = manifest.entries[entryKey];
+        if (reusableEntry?.fingerprint === getFingerprint(request.song)) {
+            const reusablePath = resolveEntryPath(reusableEntry.fileName);
+            const reusableFileExists = reusablePath
+                ? await fs
+                      .access(reusablePath)
+                      .then(() => true)
+                      .catch(() => false)
+                : false;
+
+            if (reusableFileExists) {
+                const entry = await updateManifest(
+                    async (nextManifest): Promise<null | OfflineEntry> => {
+                        const existing = nextManifest.entries[entryKey];
+                        if (existing?.fingerprint !== getFingerprint(request.song)) return null;
+                        const existingPath = resolveEntryPath(existing.fileName);
+                        if (!existingPath) return null;
+                        try {
+                            await fs.access(existingPath);
+                        } catch {
+                            return null;
+                        }
+
+                        const albumIds = new Set(existing.albumIds);
+                        if (ownership.albumId) albumIds.add(ownership.albumId);
+                        const playlistIds = new Set(existing.playlistIds);
+                        if (ownership.playlistId) playlistIds.add(ownership.playlistId);
+
+                        const nextEntry: OfflineEntry = {
+                            ...existing,
+                            albumIds: [...albumIds],
+                            manual: Boolean(ownership.manual || existing.manual),
+                            playlistIds: [...playlistIds],
+                            song: { ...request.song, imageUrl: null },
+                        };
+                        nextManifest.entries[entryKey] = nextEntry;
+                        return nextEntry;
+                    },
+                );
+                if (entry) return entry;
+            }
+        }
+
+        await fs.mkdir(path.dirname(destinationPath), { recursive: true });
         const response = await net.fetch(request.url, { signal });
         if (!response.ok || !response.body) {
             throw new Error(`Download failed with HTTP ${response.status}`);
@@ -521,13 +587,11 @@ const download = async (
             createWriteStream(temporaryPath),
             { signal },
         );
-        await fs.rm(destinationPath, { force: true });
-        await fs.rename(temporaryPath, destinationPath);
+        await replaceFile(temporaryPath, destinationPath);
 
         const stat = await fs.stat(destinationPath);
         const entry = await updateManifest(async (manifest): Promise<OfflineEntry> => {
-            const key = getEntryKey(request.song._serverId, request.song.id);
-            const existing = manifest.entries[key];
+            const existing = manifest.entries[entryKey];
             if (existing && existing.fileName !== relativeFileName) {
                 const previousPath = resolveEntryPath(existing.fileName);
                 if (previousPath) await fs.rm(previousPath, { force: true });
@@ -547,7 +611,7 @@ const download = async (
                 size: stat.size,
                 song: { ...request.song, imageUrl: null },
             };
-            manifest.entries[key] = nextEntry;
+            manifest.entries[entryKey] = nextEntry;
             return nextEntry;
         });
         return entry;
@@ -561,6 +625,8 @@ const download = async (
             });
         }
         throw error;
+    } finally {
+        releaseTrack();
     }
 };
 

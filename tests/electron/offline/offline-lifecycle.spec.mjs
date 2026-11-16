@@ -138,6 +138,103 @@ test('@nightly exposes a failed download and successfully retries it', async ({
     await waitForTaskState(page, 'complete');
 });
 
+test('@nightly safely coalesces overlapping downloads of the same track', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    mockJellyfin.setAudioDelay(50);
+    const downloadPath = '/Items/song-1/Download';
+    const requestCountBefore = mockJellyfin.state.requests.filter(
+        (request) => request.pathname.toLowerCase() === downloadPath.toLowerCase(),
+    ).length;
+
+    const results = await page.evaluate(
+        async ({ downloadUrl }) => {
+            const track = {
+                song: {
+                    _serverId: 'offline-race-server',
+                    album: 'Offline Race Album',
+                    albumId: 'offline-race-source-album',
+                    artists: ['Automation Artist'],
+                    bitRate: 128_000,
+                    codec: 'pcm_s16le',
+                    container: 'wav',
+                    duration: 12_000,
+                    id: 'song-1',
+                    imageUrl: null,
+                    name: 'Automation Track 1',
+                    sampleRate: 8_000,
+                    size: 192_044,
+                    updatedAt: '2026-01-01T00:00:00.000Z',
+                },
+                url: downloadUrl,
+            };
+
+            return Promise.all([
+                window.api.offline.syncAlbum({
+                    album: {
+                        id: 'offline-race-album-a',
+                        name: 'Offline Race Album A',
+                        serverId: 'offline-race-server',
+                    },
+                    tracks: [track],
+                }),
+                window.api.offline.syncAlbum({
+                    album: {
+                        id: 'offline-race-album-b',
+                        name: 'Offline Race Album B',
+                        serverId: 'offline-race-server',
+                    },
+                    tracks: [track],
+                }),
+            ]);
+        },
+        { downloadUrl: `${mockJellyfin.url}${downloadPath}` },
+    );
+
+    expect(results).toHaveLength(2);
+    expect(
+        mockJellyfin.state.requests.filter(
+            (request) => request.pathname.toLowerCase() === downloadPath.toLowerCase(),
+        ).length - requestCountBefore,
+    ).toBe(1);
+
+    const state = await page.evaluate(async () => {
+        const entries = (await window.api.offline.list()).filter(
+            (entry) => entry.song._serverId === 'offline-race-server',
+        );
+        const albums = (await window.api.offline.listAlbums()).filter(
+            (album) => album.serverId === 'offline-race-server',
+        );
+        const tasks = (await window.api.offline.listDownloadTasks()).filter(
+            (task) => task.serverId === 'offline-race-server',
+        );
+        const source = await window.api.offline.resolve('offline-race-server', 'song-1');
+        return { albums, entries, source, tasks };
+    });
+
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0].albumIds.sort()).toEqual([
+        'offline-race-album-a',
+        'offline-race-album-b',
+    ]);
+    expect(state.albums.map((album) => album.id).sort()).toEqual([
+        'offline-race-album-a',
+        'offline-race-album-b',
+    ]);
+    expect(state.tasks).toHaveLength(2);
+    expect(state.tasks.every((task) => task.state === 'complete' && task.error === null)).toBe(
+        true,
+    );
+    expect(state.source).not.toBeNull();
+
+    const downloadedFile = await fs.stat(state.source.filePath);
+    expect(downloadedFile.size).toBeGreaterThan(0);
+    const siblingFiles = await fs.readdir(path.dirname(state.source.filePath));
+    expect(siblingFiles.filter((name) => name.endsWith('.part'))).toEqual([]);
+});
+
 test('@nightly restores completed download history after an application restart', async ({
     electronApp,
     mockJellyfin,
