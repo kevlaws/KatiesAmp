@@ -173,6 +173,26 @@ test('@full shows the ready update action beside the current version', async ({
     await expect(installUpdate).toBeEnabled();
 });
 
+test('@full checks for updates from the sidebar menu', async ({ electronApp, page }) => {
+    await electronApp.evaluate(({ ipcMain }) => {
+        globalThis.__katiesAmpManualUpdateChecks = 0;
+        ipcMain.removeHandler('app-check-for-updates');
+        ipcMain.handle('app-check-for-updates', () => {
+            globalThis.__katiesAmpManualUpdateChecks += 1;
+            return { status: 'not-available' };
+        });
+    });
+
+    await login(page);
+    await page.getByRole('button', { name: 'Menu' }).click();
+    await page.getByRole('menuitem', { exact: true, name: 'Check for updates' }).click();
+
+    await expect(page.getByText('KatiesAmp is up to date.', { exact: true })).toBeVisible();
+    await expect
+        .poll(() => electronApp.evaluate(() => globalThis.__katiesAmpManualUpdateChecks))
+        .toBe(1);
+});
+
 test('@full home layout remains readable when the application window is narrow', async ({
     electronApp,
     page,
