@@ -139,7 +139,7 @@ test('@full changes venue audio controls from the player settings menu', async (
     await expect(profile).toHaveValue('Tavern');
     await expect(venueBoost).toHaveValue('+6 dB');
 
-    await page.getByRole('heading', { name: 'Tracks' }).click();
+    await player.getByRole('button', { name: 'Settings' }).evaluate((button) => button.click());
     await expect(profile).toHaveCount(0);
     await openPlaybackSettings(page);
     await expect(profile).toHaveValue('Tavern');
@@ -153,7 +153,7 @@ test('@full changes venue audio controls from the player settings menu', async (
     await expect(profile).toHaveAttribute('placeholder', 'Off - select a profile');
 
     await selectOption(page, profile, 'Natural');
-    await page.getByRole('heading', { name: 'Tracks' }).click();
+    await player.getByRole('button', { name: 'Settings' }).evaluate((button) => button.click());
     await expect(profile).toHaveCount(0);
     await openPlaybackSettings(page);
     await expect(enabled).toBeChecked();
