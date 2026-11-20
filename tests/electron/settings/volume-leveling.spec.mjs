@@ -129,9 +129,7 @@ test('@full changes venue audio controls from the player settings menu', async (
     await selectOption(page, venueBoost, '+6 dB');
     await expect
         .poll(() =>
-            page.evaluate(
-                () => window.__katiesAmpAudioAutomation?.dsp?.venueOutputGain.gain.value,
-            ),
+            page.evaluate(() => window.__katiesAmpAudioAutomation?.dsp?.venueOutputGain.gain.value),
         )
         .toBeCloseTo(10 ** (6 / 20), 5);
     await expect.poll(() => playingTime(page)).toBeGreaterThan(timeBeforeChange);
