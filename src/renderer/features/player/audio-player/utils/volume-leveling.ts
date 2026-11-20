@@ -164,6 +164,7 @@ export const calculateReplayGainMultiplier = ({
 export const buildMpvVolumeLevelingFilters = (
     mode: VolumeLevelingMode,
     compressorEnabled: boolean,
+    venueOutputBoostDB?: 3 | 6,
 ): string[] => {
     const filters: string[] = [];
     const leveler = getVolumeLevelerParameters(mode);
@@ -193,6 +194,10 @@ export const buildMpvVolumeLevelingFilters = (
         );
     }
 
+    if (venueOutputBoostDB !== undefined) {
+        filters.push(`volume=${venueOutputBoostDB}dB`);
+    }
+
     return filters;
 };
 
@@ -215,6 +220,7 @@ export const buildMpvAudioFilters = (
     eq: EqSettings,
     compressor: CompressorSettings,
     volumeLevelingMode: VolumeLevelingMode = VOLUME_LEVELING_MODE.OFF,
+    venueOutputBoostDB: 3 | 6 = 3,
 ): string => {
     const filters: string[] = [];
 
@@ -243,7 +249,13 @@ export const buildMpvAudioFilters = (
         );
     }
 
-    filters.push(...buildMpvVolumeLevelingFilters(volumeLevelingMode, compressor.enabled));
+    filters.push(
+        ...buildMpvVolumeLevelingFilters(
+            volumeLevelingMode,
+            compressor.enabled,
+            venueOutputBoostDB,
+        ),
+    );
 
     return filters.join(',');
 };

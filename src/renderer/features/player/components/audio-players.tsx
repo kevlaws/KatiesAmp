@@ -102,6 +102,7 @@ const applyWebAudioDspSettings = (
     dsp: NonNullable<WebAudio['dsp']>,
     compressor: SettingsState['playback']['compressor'],
     equalizer: SettingsState['playback']['equalizer'],
+    venueOutputBoostDB: SettingsState['playback']['venueOutputBoostDB'],
     volumeLevelingMode: SettingsState['playback']['volumeLevelingMode'],
 ) => {
     dsp.preampGain.gain.value = equalizer.enabled ? decibelsToLinear(equalizer.preamp) : 1;
@@ -117,6 +118,7 @@ const applyWebAudioDspSettings = (
     dsp.levelerMakeup.gain.value = levelerParameters
         ? decibelsToLinear(levelerParameters.makeup)
         : 1;
+    dsp.venueOutputGain.gain.value = decibelsToLinear(venueOutputBoostDB);
 
     configureCompressorNode(
         dsp.limiter,
@@ -232,7 +234,7 @@ const AudioPlayersContent = ({
 }) => {
     const isRadioActive = useIsRadioActive();
     const { setSettings } = useSettingsStoreActions();
-    const { compressor, equalizer, volumeLevelingMode } = usePlaybackSettings();
+    const { compressor, equalizer, venueOutputBoostDB, volumeLevelingMode } = usePlaybackSettings();
 
     useEffect(() => {
         logger.info('Playback engine', { playbackType });
@@ -277,7 +279,8 @@ const AudioPlayersContent = ({
         // Build DSP chain from persisted settings so EQ/compressor
         // are active immediately on first playback, not just after
         // the user opens the settings panel.
-        const { compressor, equalizer, volumeLevelingMode } = useSettingsStore.getState().playback;
+        const { compressor, equalizer, venueOutputBoostDB, volumeLevelingMode } =
+            useSettingsStore.getState().playback;
 
         // Preamp gain — converts dB to linear
         const preampGain = context.createGain();
@@ -307,6 +310,8 @@ const AudioPlayersContent = ({
         levelerMakeup.gain.value = levelerParameters
             ? decibelsToLinear(levelerParameters.makeup)
             : 1;
+        const venueOutputGain = context.createGain();
+        venueOutputGain.gain.value = decibelsToLinear(venueOutputBoostDB);
 
         const limiterNode = context.createDynamicsCompressor();
         configureCompressorNode(
@@ -339,7 +344,8 @@ const AudioPlayersContent = ({
         compressorMakeup.connect(levelerNode);
         levelerNode.connect(levelerMakeup);
         levelerMakeup.connect(limiterNode);
-        limiterNode.connect(outputAnalyser);
+        limiterNode.connect(venueOutputGain);
+        venueOutputGain.connect(outputAnalyser);
         outputAnalyser.connect(context.destination);
 
         const nextWebAudio = {
@@ -353,6 +359,7 @@ const AudioPlayersContent = ({
                 limiter: limiterNode,
                 outputAnalyser,
                 preampGain,
+                venueOutputGain,
             },
             gains,
         };
@@ -379,8 +386,14 @@ const AudioPlayersContent = ({
         const dsp = audioContext?.dsp;
         if (!dsp) return;
 
-        applyWebAudioDspSettings(dsp, compressor, equalizer, volumeLevelingMode);
-    }, [audioContext, compressor, equalizer, volumeLevelingMode]);
+        applyWebAudioDspSettings(
+            dsp,
+            compressor,
+            equalizer,
+            venueOutputBoostDB,
+            volumeLevelingMode,
+        );
+    }, [audioContext, compressor, equalizer, venueOutputBoostDB, volumeLevelingMode]);
 
     useEffect(() => {
         if (!audioContext?.context) return undefined;

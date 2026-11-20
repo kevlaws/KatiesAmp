@@ -35,11 +35,12 @@ const socketPath = isWindows() ? `\\\\.\\pipe\\mpvserver-${pid}` : `/tmp/node-mp
 // handleTrackEnded runs mediaAutoNext while status is STOPPED and flips the UI back to Playing
 // on the next queue item (e.g. MPV reload after mediaStop).
 let suppressRendererPlaybackEvents = false;
+let queueReplacementDepth = 0;
 // Bumped on quit so late events from a dying instance are ignored after a new one starts.
 let playbackEventGeneration = 0;
 
 const sendRendererPlaybackEvent = (channel: string, ...args: unknown[]) => {
-    if (suppressRendererPlaybackEvents) {
+    if (suppressRendererPlaybackEvents || queueReplacementDepth > 0) {
         return;
     }
     getMainWindow()?.webContents.send(channel, ...args);
@@ -478,52 +479,51 @@ ipcMain.on('player-seek-to', async (_event, time: number) => {
 });
 
 // Sets the queue in position 0 and 1 to the given data. Used when manually starting a song or using the next/prev buttons
-ipcMain.on('player-set-queue', async (_event, current?: string, next?: string, pause?: boolean) => {
-    if (!current && !next) {
-        try {
-            await getMpvInstance()?.clearPlaylist();
-            await getMpvInstance()?.pause();
-            return;
-        } catch (err: any | NodeMpvError) {
-            mpvLog({ action: `Failed to clear play queue` }, err);
-        }
-    }
-
-    // When pause is requested (e.g. preload after reload while UI is STOPPED/PAUSED), mpv still
-    // briefly resumes on load. Suppress those events so they do not overwrite renderer status.
-    const shouldSuppressLoadEvents = pause === true;
-    if (shouldSuppressLoadEvents) {
-        suppressRendererPlaybackEvents = true;
-    }
-
-    try {
-        if (current) {
+ipcMain.handle(
+    'player-set-queue',
+    async (_event, current?: string, next?: string, pause?: boolean) => {
+        if (!current && !next) {
             try {
-                await getMpvInstance()?.load(current, 'replace');
-            } catch (error: any | NodeMpvError) {
-                mpvLog({ action: `Failed to load current song` }, error);
+                await getMpvInstance()?.clearPlaylist();
+                await getMpvInstance()?.pause();
+                return;
+            } catch (err: any | NodeMpvError) {
+                mpvLog({ action: `Failed to clear play queue` }, err);
+            }
+        }
+
+        // Replacing the internal MPV queue can briefly emit stop, end, and resume events. The
+        // renderer already owns the intended state for this operation, so ignore those transient
+        // events instead of letting them advance or stop playback a second time.
+        queueReplacementDepth += 1;
+
+        try {
+            if (current) {
+                try {
+                    await getMpvInstance()?.load(current, 'replace');
+                } catch (error: any | NodeMpvError) {
+                    mpvLog({ action: `Failed to load current song` }, error);
+                    await getMpvInstance()?.play();
+                }
+
+                if (next) {
+                    await getMpvInstance()?.load(next, 'append');
+                }
+            }
+
+            if (pause) {
+                await getMpvInstance()?.pause();
+            } else if (pause === false) {
+                // Only force play if pause is explicitly false
                 await getMpvInstance()?.play();
             }
-
-            if (next) {
-                await getMpvInstance()?.load(next, 'append');
-            }
+        } catch (err: any | NodeMpvError) {
+            mpvLog({ action: `Failed to set play queue` }, err);
+        } finally {
+            queueReplacementDepth = Math.max(0, queueReplacementDepth - 1);
         }
-
-        if (pause) {
-            await getMpvInstance()?.pause();
-        } else if (pause === false) {
-            // Only force play if pause is explicitly false
-            await getMpvInstance()?.play();
-        }
-    } catch (err: any | NodeMpvError) {
-        mpvLog({ action: `Failed to set play queue` }, err);
-    } finally {
-        if (shouldSuppressLoadEvents) {
-            suppressRendererPlaybackEvents = false;
-        }
-    }
-});
+    },
+);
 
 // Replaces the queue in position 1 to the given data
 ipcMain.on('player-set-queue-next', async (_event, url?: string) => {

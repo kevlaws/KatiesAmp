@@ -169,8 +169,20 @@ export function MpvPlayer() {
         }
 
         manualCrossfadeAdvancingRef.current = true;
-        mediaNext(false);
-        manualCrossfadeAdvancingRef.current = false;
+        try {
+            mediaNext(false);
+            await playerRef.current?.waitForQueueSync();
+        } catch {
+            cancelManualCrossfade();
+            return;
+        } finally {
+            manualCrossfadeAdvancingRef.current = false;
+        }
+
+        if (!manualCrossfadeActiveRef.current) {
+            return;
+        }
+
         playerRef.current?.setVolume(0);
 
         const fadedIn = await animateManualVolume(
@@ -187,6 +199,7 @@ export function MpvPlayer() {
         finishFadeToNext();
     }, [
         animateManualVolume,
+        cancelManualCrossfade,
         crossfadeDuration,
         crossfadeStyle,
         finishFadeToNext,

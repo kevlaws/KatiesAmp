@@ -302,6 +302,7 @@ export type WebAudio = {
         limiter: DynamicsCompressorNode;
         outputAnalyser: AnalyserNode;
         preampGain: GainNode;
+        venueOutputGain: GainNode;
     };
     gains: GainNode[];
     visualizerInputs?: AudioNode[];

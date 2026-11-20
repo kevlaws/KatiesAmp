@@ -274,11 +274,16 @@ export const EqSettings = memo(() => {
     const applyFilters = useCallback(
         (eq: EqSettingsType, compressor: CompressorSettings) => {
             if (settings.type === PlayerType.LOCAL) {
-                const filterStr = buildMpvAudioFilters(eq, compressor, settings.volumeLevelingMode);
+                const filterStr = buildMpvAudioFilters(
+                    eq,
+                    compressor,
+                    settings.volumeLevelingMode,
+                    settings.venueOutputBoostDB,
+                );
                 mpvPlayer?.setProperties({ af: filterStr });
             }
         },
-        [settings.type, settings.volumeLevelingMode],
+        [settings.type, settings.venueOutputBoostDB, settings.volumeLevelingMode],
     );
 
     // ── EQ handlers ──────────────────────────────────────────────────────────

@@ -749,6 +749,7 @@ const PlaybackSettingsSchema = z.object({
     scrobble: ScrobbleSettingsSchema,
     transcode: TranscodingConfigSchema,
     type: z.nativeEnum(PlayerType),
+    venueOutputBoostDB: z.union([z.literal(3), z.literal(6)]).default(3),
     volumeLevelingMode: z.enum(['natural', 'off', 'tavern']).default('natural'),
     webAudio: z.boolean(),
 });
@@ -2137,6 +2138,7 @@ const initialState: SettingsState = {
             enabled: false,
         },
         type: PlayerType.WEB,
+        venueOutputBoostDB: 3,
         volumeLevelingMode: 'natural',
         webAudio: true,
     },

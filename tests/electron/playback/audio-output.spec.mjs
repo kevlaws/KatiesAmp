@@ -1,5 +1,7 @@
 import { expect, getSongCell, login, navigateTo, test } from '../fixtures/katiesamp-test.mjs';
 
+const DEFAULT_VENUE_OUTPUT_MULTIPLIER = 10 ** (3 / 20);
+
 const waitForActiveAudio = async (page, expectedTitle) => {
     await expect(
         page.locator('.media-player').getByText(expectedTitle, { exact: true }),
@@ -216,6 +218,11 @@ test('@nightly measures levelling, limiting, and crossfade through the live Web 
     await expect(firstSong).toBeVisible({ timeout: 15_000 });
     await firstSong.dblclick();
     await waitForActiveAudio(page, 'Automation Track 1');
+    await expect
+        .poll(() =>
+            page.evaluate(() => window.__katiesAmpAudioAutomation?.dsp?.venueOutputGain.gain.value),
+        )
+        .toBeCloseTo(DEFAULT_VENUE_OUTPUT_MULTIPLIER, 5);
     const quietTrack = await measureOutput(page);
 
     await page.getByRole('button', { name: 'View queue' }).click();
@@ -253,6 +260,6 @@ test('@nightly measures levelling, limiting, and crossfade through the live Web 
         .toBeGreaterThan(1);
     const crossfade = await measureOutput(page, 24);
 
-    expect(crossfade.peak).toBeLessThanOrEqual(1.1);
+    expect(crossfade.peak).toBeLessThanOrEqual(1.1 * DEFAULT_VENUE_OUTPUT_MULTIPLIER);
     expect(crossfade.minimumLimiterReduction).toBeLessThan(-0.1);
 });
