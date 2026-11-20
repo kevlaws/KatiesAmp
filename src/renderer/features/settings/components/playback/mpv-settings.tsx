@@ -2,16 +2,15 @@ import isElectron from 'is-electron';
 import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { buildMpvAudioFilters } from './mpv-audio-filters';
 import { getMpvSetting } from './mpv-properties';
 
 import { eventEmitter } from '/@/renderer/events/event-emitter';
 import {
-    getReplayGainMode,
     VOLUME_LEVELING_MODE,
     type VolumeLevelingMode,
 } from '/@/renderer/features/player/audio-player/utils/volume-leveling';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
+import { useVolumeLevelingControls } from '/@/renderer/features/player/hooks/use-volume-leveling-controls';
 import {
     SettingOption,
     SettingsSection,
@@ -39,6 +38,7 @@ export const MpvSettings = memo(() => {
     const { t } = useTranslation();
     const settings = usePlaybackSettings();
     const { setSettings } = useSettingsStoreActions();
+    const { setVenueOutputBoostDB, setVolumeLevelingMode } = useVolumeLevelingControls();
     // const { pause } = usePlayerControls();
     // const { clearQueue } = useQueueControls();
 
@@ -88,54 +88,6 @@ export const MpvSettings = memo(() => {
         const mpvSetting = getMpvSetting(setting, value);
 
         mpvPlayer?.setProperties(mpvSetting);
-    };
-
-    const handleVolumeLevelingMode = (mode: VolumeLevelingMode) => {
-        const replayGainMode = getReplayGainMode(mode);
-
-        setSettings({
-            playback: {
-                mpvProperties: {
-                    replayGainClip: true,
-                    replayGainMode,
-                },
-                volumeLevelingMode: mode,
-            },
-        });
-
-        mpvPlayer?.setProperties({
-            ...getMpvSetting('replayGainMode', replayGainMode),
-            ...getMpvSetting('replayGainClip', true),
-        });
-
-        if (settings.type === PlayerType.LOCAL) {
-            mpvPlayer?.setProperties({
-                af: buildMpvAudioFilters(
-                    settings.equalizer,
-                    settings.compressor,
-                    mode,
-                    settings.venueOutputBoostDB,
-                ),
-            });
-        }
-    };
-
-    const handleVenueOutputBoost = (value: null | string) => {
-        if (!value) return;
-
-        const venueOutputBoostDB = value === '6' ? 6 : 3;
-        setSettings({ playback: { venueOutputBoostDB } });
-
-        if (settings.type === PlayerType.LOCAL) {
-            mpvPlayer?.setProperties({
-                af: buildMpvAudioFilters(
-                    settings.equalizer,
-                    settings.compressor,
-                    settings.volumeLevelingMode,
-                    venueOutputBoostDB,
-                ),
-            });
-        }
     };
 
     const player = usePlayer();
@@ -311,7 +263,7 @@ export const MpvSettings = memo(() => {
                     aria-label={t('setting.automaticVolumeLeveling')}
                     checked={settings.volumeLevelingMode !== VOLUME_LEVELING_MODE.OFF}
                     onChange={(event) =>
-                        handleVolumeLevelingMode(
+                        setVolumeLevelingMode(
                             event.currentTarget.checked
                                 ? VOLUME_LEVELING_MODE.NATURAL
                                 : VOLUME_LEVELING_MODE.OFF,
@@ -344,7 +296,7 @@ export const MpvSettings = memo(() => {
                     ]}
                     onChange={(value) => {
                         if (value) {
-                            handleVolumeLevelingMode(value as VolumeLevelingMode);
+                            setVolumeLevelingMode(value as VolumeLevelingMode);
                         }
                     }}
                     value={settings.volumeLevelingMode}
@@ -370,7 +322,11 @@ export const MpvSettings = memo(() => {
                             value: '6',
                         },
                     ]}
-                    onChange={handleVenueOutputBoost}
+                    onChange={(value) => {
+                        if (value) {
+                            setVenueOutputBoostDB(value === '6' ? 6 : 3);
+                        }
+                    }}
                     value={String(settings.venueOutputBoostDB)}
                 />
             ),

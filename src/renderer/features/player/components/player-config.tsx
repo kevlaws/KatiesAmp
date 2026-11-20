@@ -8,7 +8,12 @@ import {
     includeUnavailableAudioDevice,
     resolveAudioOutputDeviceId,
 } from '/@/renderer/features/player/audio-player/utils/audio-output';
+import {
+    VOLUME_LEVELING_MODE,
+    type VolumeLevelingMode,
+} from '/@/renderer/features/player/audio-player/utils/volume-leveling';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
+import { useVolumeLevelingControls } from '/@/renderer/features/player/hooks/use-volume-leveling-controls';
 import {
     getDefaultAudioDevice,
     useAudioDevices,
@@ -81,6 +86,16 @@ export const PlayerConfig = () => {
                 component: <AudioDeviceConfig />,
                 id: 'audioDevice',
                 label: t('setting.audioDevice'),
+            },
+            {
+                component: <VolumeLevelingProfileConfig />,
+                id: 'volumeLevelingProfile',
+                label: t('setting.volumeLevelingProfile'),
+            },
+            {
+                component: <VenueOutputBoostConfig />,
+                id: 'venueOutputBoost',
+                label: t('setting.venueOutputBoost'),
             },
         ],
         [t],
@@ -245,6 +260,70 @@ export const PlayerConfig = () => {
                 </Stack>
             </Popover.Dropdown>
         </Popover>
+    );
+};
+
+const VolumeLevelingProfileConfig = () => {
+    const { t } = useTranslation();
+    const playbackSettings = usePlaybackSettings();
+    const { setVolumeLevelingMode } = useVolumeLevelingControls();
+    const isEnabled = playbackSettings.volumeLevelingMode !== VOLUME_LEVELING_MODE.OFF;
+
+    return (
+        <Select
+            aria-label={t('setting.volumeLevelingProfile')}
+            comboboxProps={{ withinPortal: false }}
+            data={[
+                {
+                    label: t('setting.volumeLevelingProfile', { context: 'optionNatural' }),
+                    value: VOLUME_LEVELING_MODE.NATURAL,
+                },
+                {
+                    label: t('setting.volumeLevelingProfile', { context: 'optionTavern' }),
+                    value: VOLUME_LEVELING_MODE.TAVERN,
+                },
+            ]}
+            onChange={(value) => {
+                if (value) {
+                    setVolumeLevelingMode(value as VolumeLevelingMode);
+                }
+            }}
+            placeholder={t('setting.volumeLevelingProfile', { context: 'offPlaceholder' })}
+            value={isEnabled ? playbackSettings.volumeLevelingMode : null}
+            variant="filled"
+            width="100%"
+        />
+    );
+};
+
+const VenueOutputBoostConfig = () => {
+    const { t } = useTranslation();
+    const playbackSettings = usePlaybackSettings();
+    const { setVenueOutputBoostDB } = useVolumeLevelingControls();
+
+    return (
+        <Select
+            aria-label={t('setting.venueOutputBoost')}
+            comboboxProps={{ withinPortal: false }}
+            data={[
+                {
+                    label: t('setting.venueOutputBoost', { context: 'option3' }),
+                    value: '3',
+                },
+                {
+                    label: t('setting.venueOutputBoost', { context: 'option6' }),
+                    value: '6',
+                },
+            ]}
+            onChange={(value) => {
+                if (value) {
+                    setVenueOutputBoostDB(value === '6' ? 6 : 3);
+                }
+            }}
+            value={String(playbackSettings.venueOutputBoostDB)}
+            variant="filled"
+            width="100%"
+        />
     );
 };
 

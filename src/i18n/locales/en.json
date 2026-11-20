@@ -1292,6 +1292,7 @@
         "volumeLevelingProfile_description": "Natural preserves the music's dynamics. Tavern adds gentle compression for a busier environment.",
         "volumeLevelingProfile_optionNatural": "Natural",
         "volumeLevelingProfile_optionTavern": "Tavern",
+        "volumeLevelingProfile_offPlaceholder": "Off - select a profile",
         "volumeLevelingProfile": "Volume levelling profile",
         "venueOutputBoost_description": "Raises every track by the same amount after KatiesAmp processing, without changing the relative level between tracks. Web playback requires Web Audio.",
         "venueOutputBoost_option3": "+3 dB (default)",

@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router';
 import styles from './app-menu.module.css';
 
 import { UpdateAvailableButton } from '/@/renderer/features/settings/components/update-available-button';
+import { useManualUpdateCheck } from '/@/renderer/features/settings/hooks/use-manual-update-check';
 import { openSettingsModal } from '/@/renderer/features/settings/utils/open-settings-modal';
 import { ServerSelector } from '/@/renderer/features/sidebar/components/server-selector';
 import { openReleaseNotesModal } from '/@/renderer/release-notes-modal';
@@ -23,8 +24,10 @@ import { DropdownMenu, MenuItemProps } from '/@/shared/components/dropdown-menu/
 import { Flex } from '/@/shared/components/flex/flex';
 import { Group } from '/@/shared/components/group/group';
 import { Icon } from '/@/shared/components/icon/icon';
+import { toast } from '/@/shared/components/toast/toast';
 
 const browser = isElectron() ? window.api.browser : null;
+const MANUAL_UPDATE_TOAST_ID = 'manual-update-check';
 
 interface BaseMenuItem {
     id: string;
@@ -86,6 +89,7 @@ export const AppMenu = () => {
     const settings = useGeneralSettings();
     const currentServer = useCurrentServer();
     const { open: openCommandPalette } = useCommandPalette();
+    const { checkForUpdates, isChecking, isSupported } = useManualUpdateCheck();
 
     const handleBrowserDevTools = () => {
         browser?.devtools();
@@ -101,6 +105,23 @@ export const AppMenu = () => {
 
     const handleQuit = () => {
         browser?.quit();
+    };
+
+    const handleCheckForUpdates = async () => {
+        if (isChecking) return;
+
+        toast.info({
+            autoClose: false,
+            id: MANUAL_UPDATE_TOAST_ID,
+            loading: true,
+            message: t('setting.manualUpdateCheck_checking', 'Checking…'),
+        });
+
+        const feedback = await checkForUpdates();
+        toast.hide(MANUAL_UPDATE_TOAST_ID);
+        if (!feedback) return;
+
+        toast[feedback.type]({ message: feedback.message });
     };
 
     const handleSetSideQueueLayout = (sideQueueLayout: 'horizontal' | 'vertical') => {
@@ -214,6 +235,18 @@ export const AppMenu = () => {
                     t('common.newVersion', { version: currentVersion }) as string,
                 ),
             type: 'item',
+        },
+        {
+            condition: isSupported,
+            id: 'manual-update-check',
+            item: {
+                icon: 'refresh',
+                id: 'check-for-updates',
+                label: t('setting.manualUpdateCheck', 'Check for updates'),
+                onClick: handleCheckForUpdates,
+                type: 'item',
+            },
+            type: 'conditional-item',
         },
         {
             condition: isElectron(),
