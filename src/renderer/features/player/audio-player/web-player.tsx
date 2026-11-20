@@ -186,13 +186,12 @@ export function WebPlayer() {
                 return;
             }
 
-            if (usePlayerStoreBase.getState().player.status !== PlayerStatus.PLAYING) {
+            const currentPlayer = usePlayerStoreBase.getState().player;
+            if (currentPlayer.status !== PlayerStatus.PLAYING || currentPlayer.playerNum !== 1) {
                 return;
             }
 
-            if (num === 1) {
-                setTimestamp(e.playedSeconds);
-            }
+            setTimestamp(e.playedSeconds);
 
             if (repeat === PlayerRepeat.ONE) {
                 handleRepeatOne(1, e.playedSeconds, getDuration(playerRef.current.player1().ref));
@@ -215,7 +214,7 @@ export function WebPlayer() {
                         crossfadeDuration: crossfadeDuration,
                         crossfadeStyle,
                         currentPlayer: playerRef.current.player1(),
-                        currentPlayerNum: num,
+                        currentPlayerNum: currentPlayer.playerNum,
                         currentTime: e.playedSeconds,
                         duration: getDuration(playerRef.current.player1().ref),
                         hasNextSong: Boolean(player2),
@@ -244,7 +243,6 @@ export function WebPlayer() {
             crossfadeStyle,
             handleRepeatOne,
             isTransitioning,
-            num,
             player2,
             prepareRefillNearTrackEnd,
             repeat,
@@ -260,13 +258,12 @@ export function WebPlayer() {
                 return;
             }
 
-            if (usePlayerStoreBase.getState().player.status !== PlayerStatus.PLAYING) {
+            const currentPlayer = usePlayerStoreBase.getState().player;
+            if (currentPlayer.status !== PlayerStatus.PLAYING || currentPlayer.playerNum !== 2) {
                 return;
             }
 
-            if (num === 2) {
-                setTimestamp(e.playedSeconds);
-            }
+            setTimestamp(e.playedSeconds);
 
             if (repeat === PlayerRepeat.ONE) {
                 handleRepeatOne(2, e.playedSeconds, getDuration(playerRef.current.player2().ref));
@@ -289,7 +286,7 @@ export function WebPlayer() {
                         crossfadeDuration: crossfadeDuration,
                         crossfadeStyle,
                         currentPlayer: playerRef.current.player2(),
-                        currentPlayerNum: num,
+                        currentPlayerNum: currentPlayer.playerNum,
                         currentTime: e.playedSeconds,
                         duration: getDuration(playerRef.current.player2().ref),
                         hasNextSong: Boolean(player1),
@@ -318,7 +315,6 @@ export function WebPlayer() {
             crossfadeStyle,
             handleRepeatOne,
             isTransitioning,
-            num,
             player1,
             prepareRefillNearTrackEnd,
             repeat,
@@ -384,6 +380,11 @@ export function WebPlayer() {
             return;
         }
 
+        if (activeCrossfadeSettingsRef.current !== null || isTransitioning) {
+            finishFadeToNext();
+            return;
+        }
+
         const playerData = usePlayerStoreBase.getState().getPlayerData();
         if (playerData.status !== PlayerStatus.PLAYING || !playerData.nextSong) {
             finishFadeToNext();
@@ -401,6 +402,13 @@ export function WebPlayer() {
         const nextAudio = nextPlayer?.ref?.getInternalPlayer() as HTMLAudioElement | undefined;
 
         if (!currentPlayer || !nextPlayer || !currentAudio || !nextAudio) {
+            finishFadeToNext();
+            return;
+        }
+
+        // The automatic crossfade has already started the incoming slot. Starting a manual
+        // fade here would seek that same song back to zero and make it sound repeated.
+        if (!nextAudio.paused) {
             finishFadeToNext();
             return;
         }
@@ -462,6 +470,7 @@ export function WebPlayer() {
         crossfadeStyle,
         finishFadeToNext,
         finishManualCrossfade,
+        isTransitioning,
         volume,
     ]);
 
@@ -473,12 +482,17 @@ export function WebPlayer() {
     }, [startManualCrossfade]);
 
     const handleOnEndedPlayer1 = useCallback(() => {
+        const activePlayerNum = usePlayerStoreBase.getState().player.playerNum;
         if (manualCrossfadeActiveRef.current) {
-            if (num === 1) {
+            if (activePlayerNum === 1) {
                 finishManualCrossfade(1);
             } else {
                 cancelManualCrossfade();
             }
+            return;
+        }
+
+        if (activePlayerNum !== 1) {
             return;
         }
 
@@ -500,14 +514,19 @@ export function WebPlayer() {
             }
             resetTransition();
         }
-    }, [cancelManualCrossfade, finishManualCrossfade, mediaAutoNext, num, resetTransition, volume]);
+    }, [cancelManualCrossfade, finishManualCrossfade, mediaAutoNext, resetTransition, volume]);
     const handleOnEndedPlayer2 = useCallback(() => {
+        const activePlayerNum = usePlayerStoreBase.getState().player.playerNum;
         if (manualCrossfadeActiveRef.current) {
-            if (num === 2) {
+            if (activePlayerNum === 2) {
                 finishManualCrossfade(2);
             } else {
                 cancelManualCrossfade();
             }
+            return;
+        }
+
+        if (activePlayerNum !== 2) {
             return;
         }
 
@@ -527,7 +546,7 @@ export function WebPlayer() {
             }
             resetTransition();
         }
-    }, [cancelManualCrossfade, finishManualCrossfade, mediaAutoNext, num, resetTransition, volume]);
+    }, [cancelManualCrossfade, finishManualCrossfade, mediaAutoNext, resetTransition, volume]);
 
     const player = usePlayer();
 
@@ -540,10 +559,32 @@ export function WebPlayer() {
                 resetTransition();
             },
             onPlayerQueueChange: () => {
+                const wasManualCrossfade = manualCrossfadeActiveRef.current;
                 cancelManualCrossfade();
-                if (usePlayerStoreBase.getState().player.status !== PlayerStatus.PLAYING) {
-                    resetTransition();
+
+                if (wasManualCrossfade || !isTransitioning) {
+                    return;
                 }
+
+                const previousNextSong = num === 1 ? player2 : player1;
+                const currentNextSong = usePlayerStoreBase.getState().getPlayerData().nextSong;
+                if (previousNextSong?._uniqueId === currentNextSong?._uniqueId) {
+                    return;
+                }
+
+                const activePlayerNum = usePlayerStoreBase.getState().player.playerNum;
+                const activePlayer =
+                    activePlayerNum === 1
+                        ? playerRef.current?.player1()
+                        : playerRef.current?.player2();
+                const inactivePlayer =
+                    activePlayerNum === 1
+                        ? playerRef.current?.player2()
+                        : playerRef.current?.player1();
+                activePlayer?.setVolume(volume);
+                inactivePlayer?.setVolume(0);
+                inactivePlayer?.ref?.getInternalPlayer()?.pause();
+                resetTransition();
             },
             onPlayerSeekToTimestamp: (properties) => {
                 cancelManualCrossfade();
@@ -631,6 +672,8 @@ export function WebPlayer() {
             volume,
             num,
             isTransitioning,
+            player1,
+            player2,
             transitionType,
             audioFadeOnStatusChange,
             cancelManualCrossfade,

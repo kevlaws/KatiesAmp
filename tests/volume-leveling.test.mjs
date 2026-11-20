@@ -6,6 +6,7 @@ import {
     buildMpvVolumeLevelingFilters,
     calculateReplayGainMultiplier,
     configureCompressorNode,
+    decibelsToLinear,
     getReplayGainMode,
     migrateVolumeLevelingSettings,
     VOLUME_LEVELING_MODE,
@@ -55,6 +56,42 @@ test('known peak metadata still caps ReplayGain before the final limiter', () =>
     });
 
     assert.ok(Math.abs(multiplier - 4 / 3) < 0.000001);
+});
+
+test('venue output boost raises every track equally', () => {
+    const threeDB = decibelsToLinear(3);
+    const sixDB = decibelsToLinear(6);
+    const quietTrack = 0.2;
+    const loudTrack = 0.5;
+
+    assert.ok(Math.abs(threeDB - 1.4125375446227544) < 0.000001);
+    assert.ok(Math.abs(sixDB - 1.9952623149688795) < 0.000001);
+    assert.ok(
+        Math.abs((loudTrack * threeDB) / (quietTrack * threeDB) - loudTrack / quietTrack) <
+            0.000001,
+    );
+    assert.ok(
+        Math.abs((loudTrack * sixDB) / (quietTrack * sixDB) - loudTrack / quietTrack) < 0.000001,
+    );
+});
+
+test('MPV applies the selected venue boost without enabling other processing', () => {
+    const filters = buildMpvAudioFilters(
+        { bands: [], enabled: false, preamp: 0 },
+        {
+            attack: 20,
+            enabled: false,
+            knee: 4,
+            makeup: 0,
+            ratio: 4,
+            release: 200,
+            threshold: -18,
+        },
+        VOLUME_LEVELING_MODE.OFF,
+        6,
+    );
+
+    assert.equal(filters, 'volume=6dB');
 });
 
 test('compressor configuration supports active and transparent nodes', () => {
@@ -157,12 +194,14 @@ test('MPV applies EQ, manual compression, automatic levelling, and limiting in o
             threshold: -18,
         },
         VOLUME_LEVELING_MODE.TAVERN,
+        3,
     );
 
     const preampIndex = filters.indexOf('volume=-2dB');
     const equalizerIndex = filters.indexOf('equalizer=f=1000');
     const manualCompressorIndex = filters.indexOf('ratio=4');
     const levelerIndex = filters.indexOf('ratio=1.5');
+    const venueBoostIndex = filters.indexOf('volume=3dB');
     const limiterIndex = filters.indexOf('alimiter=');
 
     assert.ok(preampIndex >= 0);
@@ -170,4 +209,5 @@ test('MPV applies EQ, manual compression, automatic levelling, and limiting in o
     assert.ok(equalizerIndex < manualCompressorIndex);
     assert.ok(manualCompressorIndex < levelerIndex);
     assert.ok(levelerIndex < limiterIndex);
+    assert.ok(limiterIndex < venueBoostIndex);
 });

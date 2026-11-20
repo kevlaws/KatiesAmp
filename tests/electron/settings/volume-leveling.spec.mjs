@@ -43,9 +43,14 @@ test('@full configures and restores automatic volume levelling', async ({ page }
 
     const enabled = page.getByRole('switch', { name: 'Automatic volume levelling' });
     const profile = page.getByRole('combobox', { name: 'Volume levelling profile' });
+    const venueBoost = page.getByRole('combobox', { name: 'Venue output boost' });
 
     await expect(enabled).toBeChecked();
     await expect(profile).toHaveValue('Natural');
+    await expect(venueBoost).toHaveValue('+3 dB (default)');
+
+    await selectOption(page, venueBoost, '+6 dB');
+    await expect(venueBoost).toHaveValue('+6 dB');
 
     await selectOption(page, profile, 'Tavern');
     await expect(profile).toHaveValue('Tavern');
@@ -53,14 +58,17 @@ test('@full configures and restores automatic volume levelling', async ({ page }
     await page.reload();
     await openPlaybackSettings(page);
     await expect(profile).toHaveValue('Tavern');
+    await expect(venueBoost).toHaveValue('+6 dB');
 
     await enabled.uncheck({ force: true });
     await expect(profile).toHaveCount(0);
+    await expect(venueBoost).toBeVisible();
 
     await page.reload();
     await openPlaybackSettings(page);
     await expect(enabled).not.toBeChecked();
     await expect(profile).toHaveCount(0);
+    await expect(venueBoost).toHaveValue('+6 dB');
 
     await enabled.check({ force: true });
     await expect(profile).toHaveValue('Natural');
@@ -73,13 +81,16 @@ test('@full exposes volume levelling for Web and MPV playback', async ({ page })
     const audioPlayer = page.getByRole('combobox', { name: 'Audio player' });
     const enabled = page.getByRole('switch', { name: 'Automatic volume levelling' });
     const profile = page.getByRole('combobox', { name: 'Volume levelling profile' });
+    const venueBoost = page.getByRole('combobox', { name: 'Venue output boost' });
 
     await expect(audioPlayer).toHaveValue('Web');
     await expect(enabled).toBeVisible();
     await expect(profile).toBeVisible();
+    await expect(venueBoost).toBeVisible();
 
     await selectOption(page, audioPlayer, 'MPV');
     await expect(audioPlayer).toHaveValue('MPV');
     await expect(enabled).toBeVisible();
     await expect(profile).toBeVisible();
+    await expect(venueBoost).toBeVisible();
 });

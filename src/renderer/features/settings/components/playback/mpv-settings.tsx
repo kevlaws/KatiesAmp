@@ -110,7 +110,30 @@ export const MpvSettings = memo(() => {
 
         if (settings.type === PlayerType.LOCAL) {
             mpvPlayer?.setProperties({
-                af: buildMpvAudioFilters(settings.equalizer, settings.compressor, mode),
+                af: buildMpvAudioFilters(
+                    settings.equalizer,
+                    settings.compressor,
+                    mode,
+                    settings.venueOutputBoostDB,
+                ),
+            });
+        }
+    };
+
+    const handleVenueOutputBoost = (value: null | string) => {
+        if (!value) return;
+
+        const venueOutputBoostDB = value === '6' ? 6 : 3;
+        setSettings({ playback: { venueOutputBoostDB } });
+
+        if (settings.type === PlayerType.LOCAL) {
+            mpvPlayer?.setProperties({
+                af: buildMpvAudioFilters(
+                    settings.equalizer,
+                    settings.compressor,
+                    settings.volumeLevelingMode,
+                    venueOutputBoostDB,
+                ),
             });
         }
     };
@@ -332,6 +355,27 @@ export const MpvSettings = memo(() => {
             }),
             isHidden: settings.volumeLevelingMode === VOLUME_LEVELING_MODE.OFF,
             title: t('setting.volumeLevelingProfile'),
+        },
+        {
+            control: (
+                <Select
+                    aria-label={t('setting.venueOutputBoost')}
+                    data={[
+                        {
+                            label: t('setting.venueOutputBoost', { context: 'option3' }),
+                            value: '3',
+                        },
+                        {
+                            label: t('setting.venueOutputBoost', { context: 'option6' }),
+                            value: '6',
+                        },
+                    ]}
+                    onChange={handleVenueOutputBoost}
+                    value={String(settings.venueOutputBoostDB)}
+                />
+            ),
+            description: t('setting.venueOutputBoost', { context: 'description' }),
+            title: t('setting.venueOutputBoost'),
         },
         {
             control: (
