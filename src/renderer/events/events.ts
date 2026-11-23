@@ -11,6 +11,7 @@ export type EventMap = {
     MEDIA_FADE_NEXT: MediaFadeNextEventPayload;
     MEDIA_NEXT: MediaNextEventPayload;
     MEDIA_PREV: MediaPrevEventPayload;
+    MPV_AUDIO_CONFIGURATION_CHANGED: MpvAudioConfigurationChangedEventPayload;
     MPV_RELOAD: MpvReloadEventPayload;
     PLAYER_LYRICS_FETCHED: PlayerLyricsFetchedEventPayload;
     PLAYER_PLAY: PlayerPlayEventPayload;
@@ -48,6 +49,8 @@ export type MediaPrevEventPayload = {
     currentIndex: number;
     prevIndex: number;
 };
+
+export type MpvAudioConfigurationChangedEventPayload = Record<string, never>;
 
 export type MpvReloadEventPayload = Record<string, never>;
 

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { getMpvSetting } from './mpv-properties';
 
 import { eventEmitter } from '/@/renderer/events/event-emitter';
+import { MPV_AUDIO_CONFIGURATION_CHANGED } from '/@/renderer/features/player/audio-player/utils/mpv-track-audio';
 import {
     VOLUME_LEVELING_MODE,
     type VolumeLevelingMode,
@@ -88,6 +89,14 @@ export const MpvSettings = memo(() => {
         const mpvSetting = getMpvSetting(setting, value);
 
         mpvPlayer?.setProperties(mpvSetting);
+
+        if (
+            setting === 'replayGainClip' ||
+            setting === 'replayGainFallbackDB' ||
+            setting === 'replayGainPreampDB'
+        ) {
+            eventEmitter.emit(MPV_AUDIO_CONFIGURATION_CHANGED, {});
+        }
     };
 
     const player = usePlayer();
@@ -321,10 +330,14 @@ export const MpvSettings = memo(() => {
                             label: t('setting.venueOutputBoost', { context: 'option6' }),
                             value: '6',
                         },
+                        {
+                            label: t('setting.venueOutputBoost', { context: 'option12' }),
+                            value: '12',
+                        },
                     ]}
                     onChange={(value) => {
                         if (value) {
-                            setVenueOutputBoostDB(value === '6' ? 6 : 3);
+                            setVenueOutputBoostDB(value === '12' ? 12 : value === '6' ? 6 : 3);
                         }
                     }}
                     value={String(settings.venueOutputBoostDB)}

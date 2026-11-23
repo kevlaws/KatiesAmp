@@ -16,6 +16,7 @@ import styles from './window-bar.module.css';
 import { useRadioPlayer } from '/@/renderer/features/radio/hooks/use-radio-player';
 import {
     useAppStore,
+    useCurrentServer,
     useLatestVersion,
     usePlayerData,
     usePlayerStatus,
@@ -140,6 +141,8 @@ export const WindowBar = () => {
     const windowBarTrackinfo = useWindowBarTrackinfo();
     const { currentVersion } = useLatestVersion();
     const appTitle = `KatiesAmp v${currentVersion}`;
+    const currentServer = useCurrentServer();
+    const username = currentServer?.username || t('page.windowBar.notConnected');
 
     const playerStatus = usePlayerStatus();
     const privateMode = useAppStore((state) => state.privateMode);
@@ -163,9 +166,10 @@ export const WindowBar = () => {
 
     const title = useMemo(() => {
         const privateModeString = privateMode ? t('page.windowBar.privateMode') : '';
+        const appIdentity = `${appTitle} - ${username}`;
 
         if (!windowBarTrackinfo) {
-            return `${appTitle}${privateMode ? ` ${privateModeString}` : ''}`;
+            return `${appIdentity}${privateMode ? ` ${privateModeString}` : ''}`;
         }
 
         // Show radio information if radio is active
@@ -177,24 +181,26 @@ export const WindowBar = () => {
             let radioMetadata = '';
             if (metadata) {
                 if (metadata.title && metadata.artist) {
-                    radioMetadata = ` — ${metadata.artist} — ${metadata.title}`;
+                    radioMetadata = ` - ${metadata.artist} - ${metadata.title}`;
                 } else if (metadata.title) {
-                    radioMetadata = ` — ${metadata.title}`;
+                    radioMetadata = ` - ${metadata.title}`;
                 } else if (metadata.artist) {
-                    radioMetadata = ` — ${metadata.artist}`;
+                    radioMetadata = ` - ${metadata.artist}`;
                 }
             }
 
-            return `${radioStatusString}${radioTitle}${radioMetadata} — ${appTitle}${privateMode ? ` ${privateModeString}` : ''}`;
+            return `${radioStatusString}${radioTitle}${radioMetadata} - ${appIdentity}${privateMode ? ` ${privateModeString}` : ''}`;
         }
 
         // Show regular song information
         const statusString = playerStatus === PlayerStatus.PAUSED ? t('page.windowBar.paused') : '';
         const queueString = queueLength ? `(${index + 1} / ${queueLength}) ` : '';
+        const artist = currentSong?.artistName || t('page.windowBar.unknownArtist');
+        const track = currentSong?.name || t('page.windowBar.unknownTrack');
         const title = `${
             queueLength
-                ? `${statusString}${queueString}${currentSong?.name}${currentSong?.artistName ? ` — ${currentSong?.artistName} — ${appTitle}` : ''}`
-                : appTitle
+                ? `${statusString}${queueString}${artist} - ${track} - ${appIdentity}`
+                : appIdentity
         }${privateMode ? ` ${privateModeString}` : ''}`;
         return title;
     }, [
@@ -211,6 +217,7 @@ export const WindowBar = () => {
         stationName,
         t,
         windowBarTrackinfo,
+        username,
     ]);
 
     useEffect(() => {

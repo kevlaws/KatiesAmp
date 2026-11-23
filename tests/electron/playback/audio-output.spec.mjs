@@ -1,6 +1,7 @@
 import { expect, getSongCell, login, navigateTo, test } from '../fixtures/katiesamp-test.mjs';
 
 const DEFAULT_VENUE_OUTPUT_MULTIPLIER = 10 ** (3 / 20);
+const ONE_DECIBEL_RATIO = 10 ** (1 / 20);
 
 const waitForActiveAudio = async (page, expectedTitle) => {
     await expect(
@@ -15,6 +16,29 @@ const waitForActiveAudio = async (page, expectedTitle) => {
             ),
         )
         .toBe(true);
+};
+
+const waitForSettledSingleTrack = async (page, expectedSongId) => {
+    const hasOnlyExpectedTrackPlaying = () =>
+        page.evaluate((songId) => {
+            const activeAudio = [...document.querySelectorAll('audio')].filter(
+                (audio) => !audio.paused && audio.currentTime > 0,
+            );
+            if (activeAudio.length !== 1) return false;
+
+            const source = decodeURIComponent(activeAudio[0].currentSrc).toLowerCase();
+            return (
+                source.includes(`/audio/${songId.toLowerCase()}/`) ||
+                source.includes(`/items/${songId.toLowerCase()}/`)
+            );
+        }, expectedSongId);
+
+    await expect.poll(hasOnlyExpectedTrackPlaying, { timeout: 20_000 }).toBe(true);
+
+    // Require the single-track state to remain stable before sampling. This avoids
+    // measuring the tail of the previous element during a manual crossfade.
+    await page.waitForTimeout(300);
+    await expect.poll(hasOnlyExpectedTrackPlaying).toBe(true);
 };
 
 const measureOutput = (page, sampleCount = 16) =>
@@ -208,7 +232,7 @@ test('@full routes HTML audio to the saved output when Web Audio is disabled', a
         .toBe(true);
 });
 
-test('@nightly measures levelling, limiting, and crossfade through the live Web Audio graph', async ({
+test('@full measures levelling, limiting, and crossfade through the live Web Audio graph', async ({
     page,
 }) => {
     await login(page);
@@ -218,6 +242,7 @@ test('@nightly measures levelling, limiting, and crossfade through the live Web 
     await expect(firstSong).toBeVisible({ timeout: 15_000 });
     await firstSong.dblclick();
     await waitForActiveAudio(page, 'Automation Track 1');
+    await waitForSettledSingleTrack(page, 'song-1');
     await expect
         .poll(() =>
             page.evaluate(() => window.__katiesAmpAudioAutomation?.dsp?.venueOutputGain.gain.value),
@@ -232,12 +257,14 @@ test('@nightly measures levelling, limiting, and crossfade through the live Web 
         .first()
         .dblclick();
     await waitForActiveAudio(page, 'Automation Track 2');
+    await waitForSettledSingleTrack(page, 'song-2');
     const loudTrack = await measureOutput(page);
 
     expect(quietTrack.rms).toBeGreaterThan(0.01);
     expect(loudTrack.rms).toBeGreaterThan(0.01);
-    expect(loudTrack.rms / quietTrack.rms).toBeGreaterThan(0.65);
-    expect(loudTrack.rms / quietTrack.rms).toBeLessThan(1.75);
+    const normalizedOutputRatio = loudTrack.rms / quietTrack.rms;
+    expect(normalizedOutputRatio).toBeGreaterThanOrEqual(1 / ONE_DECIBEL_RATIO);
+    expect(normalizedOutputRatio).toBeLessThanOrEqual(ONE_DECIBEL_RATIO);
 
     await page.evaluate(() => {
         const automation = window.__katiesAmpAudioAutomation;
@@ -260,6 +287,10 @@ test('@nightly measures levelling, limiting, and crossfade through the live Web 
         .toBeGreaterThan(1);
     const crossfade = await measureOutput(page, 24);
 
-    expect(crossfade.peak).toBeLessThanOrEqual(1.1 * DEFAULT_VENUE_OUTPUT_MULTIPLIER);
+    // Venue boost is upstream of the final peak-protection compressor. The
+    // browser compressor is not a brick-wall limiter, so allow its documented
+    // transient overshoot while proving the +3 dB boost cannot pass through
+    // unprotected during an overlapping crossfade.
+    expect(crossfade.peak).toBeLessThanOrEqual(ONE_DECIBEL_RATIO);
     expect(crossfade.minimumLimiterReduction).toBeLessThan(-0.1);
 });

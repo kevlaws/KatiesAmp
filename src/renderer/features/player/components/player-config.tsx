@@ -314,10 +314,14 @@ const VenueOutputBoostConfig = () => {
                     label: t('setting.venueOutputBoost', { context: 'option6' }),
                     value: '6',
                 },
+                {
+                    label: t('setting.venueOutputBoost', { context: 'option12' }),
+                    value: '12',
+                },
             ]}
             onChange={(value) => {
                 if (value) {
-                    setVenueOutputBoostDB(value === '6' ? 6 : 3);
+                    setVenueOutputBoostDB(value === '12' ? 12 : value === '6' ? 6 : 3);
                 }
             }}
             value={String(playbackSettings.venueOutputBoostDB)}

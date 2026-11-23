@@ -553,8 +553,11 @@
             "title": "$t(entity.favorite, {\"count\": 2})"
         },
         "windowBar": {
+            "notConnected": "Not connected",
             "paused": "(Paused) ",
-            "privateMode": "(Private mode)"
+            "privateMode": "(Private mode)",
+            "unknownArtist": "Unknown artist",
+            "unknownTrack": "Unknown track"
         },
         "appMenu": {
             "collapseSidebar": "Collapse sidebar",
@@ -571,10 +574,15 @@
             "quit": "$t(common.quit)",
             "selectServer": "Select server",
             "selectMusicFolder": "Select music folder",
+            "signalPath": "Signal path",
             "noMusicFolder": "No music folder selected",
             "multipleMusicFolders": "{{count}} music folders selected",
             "settings": "$t(common.setting, {\"count\": 2})",
             "version": "Version {{version}}"
+        },
+        "signalPath": {
+            "noTrack": "Play a track to see its live signal path.",
+            "title": "Signal path"
         },
         "manageServers": {
             "title": "Manage servers",
@@ -1297,6 +1305,7 @@
         "venueOutputBoost_description": "Raises every track by the same amount after KatiesAmp processing, without changing the relative level between tracks. Web playback requires Web Audio.",
         "venueOutputBoost_option3": "+3 dB (default)",
         "venueOutputBoost_option6": "+6 dB",
+        "venueOutputBoost_option12": "+12 dB",
         "venueOutputBoost": "Venue output boost",
         "sampleRate_description": "Select the output sample rate to be used if the sample frequency selected is different from that of the current media. A value less than 8000 will use the default frequency",
         "sampleRate": "Sample rate",
@@ -1405,7 +1414,7 @@
         "windowBarStyle_description": "Select the style of the window bar",
         "windowBarStyle": "Window bar style",
         "windowBarTrackinfo": "Track info in Window Title",
-        "windowBarTrackinfo_description": "Show current track's title and artist, queue position, and Playing/Paused state in the Window's Title.",
+        "windowBarTrackinfo_description": "Show the current artist and track, queue position, playback state, KatiesAmp version, and logged-in user in the window title.",
         "zoom_description": "Sets the zoom percentage for the application",
         "zoom": "Zoom percentage",
         "queryBuilder": "Query builder",

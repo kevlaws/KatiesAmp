@@ -1,23 +1,38 @@
 import isElectron from 'is-electron';
 import { useCallback } from 'react';
 
+import { eventEmitter } from '/@/renderer/events/event-emitter';
 import {
-    buildMpvAudioFilters,
+    getMpvTrackAudioConfiguration,
+    getMpvTrackAudioProperties,
+    MPV_AUDIO_CONFIGURATION_CHANGED,
+} from '/@/renderer/features/player/audio-player/utils/mpv-track-audio';
+import {
     getReplayGainMode,
+    type VenueOutputBoostDB,
     type VolumeLevelingMode,
 } from '/@/renderer/features/player/audio-player/utils/volume-leveling';
-import { getMpvSetting } from '/@/renderer/features/settings/components/playback/mpv-properties';
+import { usePlayerStore } from '/@/renderer/store/player.store';
 import { useSettingsStore, useSettingsStoreActions } from '/@/renderer/store/settings.store';
 import { PlayerType } from '/@/shared/types/types';
 
 const mpvPlayer = isElectron() ? window.api.mpvPlayer : null;
+
+const applyCurrentMpvAudioConfiguration = () => {
+    const playback = useSettingsStore.getState().playback;
+    if (playback.type !== PlayerType.LOCAL) return;
+
+    const song = usePlayerStore.getState().getPlayerData().currentSong;
+    const configuration = getMpvTrackAudioConfiguration(song, playback);
+    mpvPlayer?.setProperties(getMpvTrackAudioProperties(configuration));
+    eventEmitter.emit(MPV_AUDIO_CONFIGURATION_CHANGED, {});
+};
 
 export const useVolumeLevelingControls = () => {
     const { setSettings } = useSettingsStoreActions();
 
     const setVolumeLevelingMode = useCallback(
         (mode: VolumeLevelingMode) => {
-            const settings = useSettingsStore.getState().playback;
             const replayGainMode = getReplayGainMode(mode);
 
             setSettings({
@@ -30,40 +45,15 @@ export const useVolumeLevelingControls = () => {
                 },
             });
 
-            mpvPlayer?.setProperties({
-                ...getMpvSetting('replayGainMode', replayGainMode),
-                ...getMpvSetting('replayGainClip', true),
-            });
-
-            if (settings.type === PlayerType.LOCAL) {
-                mpvPlayer?.setProperties({
-                    af: buildMpvAudioFilters(
-                        settings.equalizer,
-                        settings.compressor,
-                        mode,
-                        settings.venueOutputBoostDB,
-                    ),
-                });
-            }
+            applyCurrentMpvAudioConfiguration();
         },
         [setSettings],
     );
 
     const setVenueOutputBoostDB = useCallback(
-        (venueOutputBoostDB: 3 | 6) => {
-            const settings = useSettingsStore.getState().playback;
+        (venueOutputBoostDB: VenueOutputBoostDB) => {
             setSettings({ playback: { venueOutputBoostDB } });
-
-            if (settings.type === PlayerType.LOCAL) {
-                mpvPlayer?.setProperties({
-                    af: buildMpvAudioFilters(
-                        settings.equalizer,
-                        settings.compressor,
-                        settings.volumeLevelingMode,
-                        venueOutputBoostDB,
-                    ),
-                });
-            }
+            applyCurrentMpvAudioConfiguration();
         },
         [setSettings],
     );

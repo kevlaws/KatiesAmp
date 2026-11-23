@@ -1,4 +1,6 @@
+import clsx from 'clsx';
 import { memo, MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import styles from './mobile-fullscreen-player.module.css';
 
@@ -24,9 +26,16 @@ export const MobileFullscreenPlayerBottomControls = memo(
         onToggleLyrics,
         onToggleQueue,
     }: MobileFullscreenPlayerBottomControlsProps) => {
+        const { t } = useTranslation();
         const repeat = usePlayerRepeat();
         const shuffle = usePlayerShuffle();
         const { toggleRepeat, toggleShuffle } = usePlayer();
+        const repeatLabel =
+            repeat === PlayerRepeat.NONE
+                ? t('player.repeat', { context: 'off' })
+                : repeat === PlayerRepeat.ALL
+                  ? t('player.repeat', { context: 'all' })
+                  : t('player.repeat', { context: 'one' });
 
         return (
             <div className={styles.bottomControlsBar}>
@@ -42,10 +51,14 @@ export const MobileFullscreenPlayerBottomControls = memo(
                         variant="transparent"
                     />
                     <ActionIcon
-                        className={styles.bottomControlIcon}
+                        aria-label={repeatLabel}
+                        aria-pressed={repeat !== PlayerRepeat.NONE}
+                        className={clsx(styles.bottomControlIcon, {
+                            [styles.bottomControlIconActive]: repeat !== PlayerRepeat.NONE,
+                        })}
                         icon={repeat === PlayerRepeat.ONE ? 'mediaRepeatOne' : 'mediaRepeat'}
                         iconProps={{
-                            fill: repeat === PlayerRepeat.NONE ? 'default' : 'primary',
+                            fill: repeat === PlayerRepeat.NONE ? 'default' : 'contrast',
                             size: 'xl',
                         }}
                         onClick={toggleRepeat}

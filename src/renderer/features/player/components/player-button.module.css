@@ -36,6 +36,22 @@
     }
 }
 
+.active-emphasis {
+    color: var(--theme-colors-primary-contrast) !important;
+    background: var(--theme-colors-primary-filled) !important;
+    box-shadow: 0 0 0 2px alpha(var(--theme-colors-primary-filled), 30%);
+
+    svg {
+        color: var(--theme-colors-primary-contrast) !important;
+        fill: var(--theme-colors-primary-contrast) !important;
+    }
+
+    &:hover,
+    &:focus-visible {
+        background: lighten(var(--theme-colors-primary-filled), 8%) !important;
+    }
+}
+
 .main {
     background: var(--theme-colors-foreground) !important;
     border-radius: 50%;

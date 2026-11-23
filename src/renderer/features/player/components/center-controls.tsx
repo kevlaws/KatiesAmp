@@ -326,7 +326,9 @@ const RepeatButton = ({ disabled }: { disabled?: boolean }) => {
     return (
         <PlayerButton
             aria-label={label}
+            aria-pressed={repeat !== PlayerRepeat.NONE}
             disabled={disabled}
+            emphasizeActive
             icon={
                 repeat === PlayerRepeat.ONE ? (
                     <Icon fill="primary" icon="mediaRepeatOne" size={buttonSize} />

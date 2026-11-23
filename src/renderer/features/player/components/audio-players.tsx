@@ -122,7 +122,9 @@ const applyWebAudioDspSettings = (
 
     configureCompressorNode(
         dsp.limiter,
-        shouldEnableOutputLimiter(volumeLevelingMode, compressor.enabled) ? OUTPUT_LIMITER : null,
+        shouldEnableOutputLimiter(volumeLevelingMode, compressor.enabled, venueOutputBoostDB)
+            ? OUTPUT_LIMITER
+            : null,
     );
 };
 
@@ -316,7 +318,7 @@ const AudioPlayersContent = ({
         const limiterNode = context.createDynamicsCompressor();
         configureCompressorNode(
             limiterNode,
-            shouldEnableOutputLimiter(volumeLevelingMode, compressor.enabled)
+            shouldEnableOutputLimiter(volumeLevelingMode, compressor.enabled, venueOutputBoostDB)
                 ? OUTPUT_LIMITER
                 : null,
         );
@@ -343,9 +345,9 @@ const AudioPlayersContent = ({
         compressorNode.connect(compressorMakeup);
         compressorMakeup.connect(levelerNode);
         levelerNode.connect(levelerMakeup);
-        levelerMakeup.connect(limiterNode);
-        limiterNode.connect(venueOutputGain);
-        venueOutputGain.connect(outputAnalyser);
+        levelerMakeup.connect(venueOutputGain);
+        venueOutputGain.connect(limiterNode);
+        limiterNode.connect(outputAnalyser);
         outputAnalyser.connect(context.destination);
 
         const nextWebAudio = {

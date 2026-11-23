@@ -1,3 +1,4 @@
+import type { QueueSong } from '/@/shared/types/domain-types';
 import type { RefObject } from 'react';
 
 import isElectron from 'is-electron';
@@ -14,10 +15,17 @@ import {
     resolveAudioOutputDeviceId,
 } from '/@/renderer/features/player/audio-player/utils/audio-output';
 import { isCurrentMpvQueuePair } from '/@/renderer/features/player/audio-player/utils/mpv-queue-sync';
+import {
+    getMpvTrackAudioConfiguration,
+    getMpvTrackAudioProperties,
+    MPV_AUDIO_CONFIGURATION_CHANGED,
+} from '/@/renderer/features/player/audio-player/utils/mpv-track-audio';
 import { useRadioStore } from '/@/renderer/features/radio/hooks/use-radio-player';
 import { getMpvProperties } from '/@/renderer/features/settings/components/playback/mpv-properties';
 import {
+    clearMpvLoudnessTelemetry,
     setMpvInitialized,
+    setMpvLoudnessTelemetry,
     useMpvInitialized,
     usePlaybackSettings,
     usePlayerActions,
@@ -50,6 +58,28 @@ const mpvPlayerListener = isElectron() ? window.api.mpvPlayerListener : null;
 const ipc = isElectron() ? window.api.ipc : null;
 
 const PROGRESS_UPDATE_INTERVAL = 250;
+
+const resolveMpvSongAudio = (song: QueueSong | undefined) =>
+    getMpvTrackAudioConfiguration(song, useSettingsStore.getState().playback);
+
+const publishMpvLoudnessTelemetry = (
+    song: QueueSong | undefined,
+    configuration: ReturnType<typeof resolveMpvSongAudio>,
+) => {
+    if (!song) {
+        clearMpvLoudnessTelemetry();
+        return;
+    }
+
+    setMpvLoudnessTelemetry({
+        adjustment: configuration.adjustment,
+        audioFilters: configuration.audioFilters,
+        configuredAt: Date.now(),
+        replayGainMode: configuration.replayGainMode,
+        songId: song.id,
+        songUniqueId: song._uniqueId,
+    });
+};
 
 export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
     const {
@@ -133,6 +163,10 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
             const properties: Record<string, any> = {
                 ...getMpvProperties(mpvProperties),
                 'audio-pitch-correction': preservePitch === false ? 'no' : 'yes',
+                // Jellyfin NormalizationGain/LUFS is applied explicitly in each
+                // queue item's filter chain. Embedded ReplayGain is enabled only
+                // as a per-file fallback when server metadata is unavailable.
+                replaygain: 'no',
                 speed: speed,
                 volume: volume,
             };
@@ -147,25 +181,15 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
                 properties,
             });
 
-            // Apply EQ and compressor filters after MPV has initialized
-            const { compressor, equalizer, venueOutputBoostDB, volumeLevelingMode } =
-                useSettingsStore.getState().playback;
-            const { buildMpvAudioFilters } =
-                await import('/@/renderer/features/settings/components/playback/mpv-audio-filters');
-            const filterStr = buildMpvAudioFilters(
-                equalizer,
-                compressor,
-                volumeLevelingMode,
-                venueOutputBoostDB,
-            );
-            mpvPlayer?.setProperties({ af: filterStr });
+            const playerData = usePlayerStore.getState().getPlayerData();
+            const currentAudioConfiguration = resolveMpvSongAudio(playerData.currentSong);
+            mpvPlayer?.setProperties(getMpvTrackAudioProperties(currentAudioConfiguration));
 
             // After initialization, populate the queue if currentSrc is available
             // Don't override queue if radio is active
             const radioState = useRadioStore.getState();
 
             if (!radioState.currentStreamUrl) {
-                const playerData = usePlayerStore.getState().getPlayerData();
                 let currentSongUrl: string | undefined;
                 let nextSongUrl: string | undefined;
                 try {
@@ -188,7 +212,15 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
                     const safeNextSongUrl = isDifferentNextSong ? nextSongUrl : undefined;
                     const shouldPause =
                         usePlayerStore.getState().player.status !== PlayerStatus.PLAYING;
-                    mpvPlayer.setQueue(currentSongUrl, safeNextSongUrl, shouldPause);
+                    const nextAudioConfiguration = resolveMpvSongAudio(playerData.nextSong);
+                    await mpvPlayer.setQueue(
+                        currentSongUrl,
+                        safeNextSongUrl,
+                        shouldPause,
+                        currentAudioConfiguration.loadOptions,
+                        nextAudioConfiguration.loadOptions,
+                    );
+                    publishMpvLoudnessTelemetry(playerData.currentSong, currentAudioConfiguration);
                     hasPopulatedQueueRef.current = true;
                     let seekToAfterInit = -1;
                     if (playerHandoff.pendingLocalSeek > 0 && isMountedRef.current) {
@@ -222,6 +254,7 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
             // Quit mpv on unmount
             mpvPlayer?.quit();
             setMpvInitialized(false);
+            clearMpvLoudnessTelemetry();
             hasPopulatedQueueRef.current = false;
         };
         // Note: volume, speed, preservePitch, and transcode are intentionally not in dependencies.
@@ -375,6 +408,20 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
 
     const hasCurrentSong = !!currentSong?.id;
 
+    // File-local options make automatic next deterministic. Re-assert the
+    // matching current configuration when the renderer advances its queue and
+    // publish exactly what MPV was configured to apply for Signal Path.
+    useEffect(() => {
+        if (!mpvPlayer || !isInitialized || !currentSong) {
+            clearMpvLoudnessTelemetry();
+            return;
+        }
+
+        const configuration = resolveMpvSongAudio(currentSong);
+        mpvPlayer.setProperties(getMpvTrackAudioProperties(configuration));
+        publishMpvLoudnessTelemetry(currentSong, configuration);
+    }, [currentSong, isInitialized]);
+
     // Set up progress tracking
     useEffect(() => {
         if (progressIntervalRef.current) {
@@ -431,6 +478,46 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
             replaceMpvQueue(transcode, () => generation === queueSyncGenerationRef.current),
         );
     }, [scheduleQueueSync, transcode]);
+
+    const refreshMpvAudioConfiguration = useCallback(() => {
+        if (!mpvPlayer || !isInitialized) return;
+
+        const playerData = usePlayerStore.getState().getPlayerData();
+        const currentConfiguration = resolveMpvSongAudio(playerData.currentSong);
+        mpvPlayer.setProperties(getMpvTrackAudioProperties(currentConfiguration));
+        publishMpvLoudnessTelemetry(playerData.currentSong, currentConfiguration);
+
+        const expectedCurrentUniqueId = playerData.currentSong?._uniqueId;
+        const expectedNextUniqueId = playerData.nextSong?._uniqueId;
+        const generation = ++queueSyncGenerationRef.current;
+        void scheduleQueueSync(async () => {
+            const nextSongUrl = playerData.nextSong
+                ? await getSongUrl(playerData.nextSong, transcode, true)
+                : undefined;
+            const latestPlayerData = usePlayerStore.getState().getPlayerData();
+            if (
+                generation !== queueSyncGenerationRef.current ||
+                !isCurrentMpvQueuePair(
+                    expectedCurrentUniqueId,
+                    expectedNextUniqueId,
+                    latestPlayerData.currentSong?._uniqueId,
+                    latestPlayerData.nextSong?._uniqueId,
+                )
+            ) {
+                return;
+            }
+
+            const nextConfiguration = resolveMpvSongAudio(latestPlayerData.nextSong);
+            mpvPlayer.setQueueNext(nextSongUrl, nextConfiguration.loadOptions);
+        });
+    }, [isInitialized, scheduleQueueSync, transcode]);
+
+    useEffect(() => {
+        eventEmitter.on(MPV_AUDIO_CONFIGURATION_CHANGED, refreshMpvAudioConfiguration);
+        return () => {
+            eventEmitter.off(MPV_AUDIO_CONFIGURATION_CHANGED, refreshMpvAudioConfiguration);
+        };
+    }, [refreshMpvAudioConfiguration]);
 
     useEffect(() => {
         if (!mpvPlayerListener) {
@@ -508,7 +595,8 @@ export const MpvPlayerEngine = (props: MpvPlayerEngineProps) => {
                         return;
                     }
 
-                    mpvPlayer?.setQueueNext(nextSongUrl);
+                    const nextConfiguration = resolveMpvSongAudio(currentPlayerData.nextSong);
+                    mpvPlayer?.setQueueNext(nextSongUrl, nextConfiguration.loadOptions);
                 });
             },
             onPlayerPlay: () => {
@@ -586,7 +674,8 @@ async function handleMpvAutoNext(
         ? await getSongUrl(playerData.nextSong, transcode, true)
         : undefined;
     if (isCurrent()) {
-        mpvPlayer?.autoNext(nextSongUrl);
+        const nextConfiguration = resolveMpvSongAudio(playerData.nextSong);
+        mpvPlayer?.autoNext(nextSongUrl, nextConfiguration.loadOptions);
     }
 }
 
@@ -615,6 +704,15 @@ async function replaceMpvQueue(
         ? await getSongUrl(playerData.nextSong!, transcode, true)
         : undefined;
     if (isCurrent()) {
-        await mpvPlayer?.setQueue(currentSongUrl, nextSongUrl, false);
+        const currentConfiguration = resolveMpvSongAudio(playerData.currentSong);
+        const nextConfiguration = resolveMpvSongAudio(playerData.nextSong);
+        await mpvPlayer?.setQueue(
+            currentSongUrl,
+            nextSongUrl,
+            false,
+            currentConfiguration.loadOptions,
+            nextConfiguration.loadOptions,
+        );
+        publishMpvLoudnessTelemetry(playerData.currentSong, currentConfiguration);
     }
 }

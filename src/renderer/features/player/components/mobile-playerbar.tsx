@@ -11,6 +11,7 @@ import { ContextMenuController } from '/@/renderer/features/context-menu/context
 import { MainPlayButton, PlayerButton } from '/@/renderer/features/player/components/player-button';
 import { RadioMetadataDisplay } from '/@/renderer/features/player/components/radio-metadata-display';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
+import { useCurrentPlaybackCollection } from '/@/renderer/features/player/hooks/use-current-playback-collection';
 import {
     useIsRadioActive,
     useRadioPlayer,
@@ -39,6 +40,7 @@ export const MobilePlayerbar = () => {
     const setFullScreenPlayerStore = useSetFullScreenPlayerStore();
     const { setStore } = useFullScreenPlayerStoreActions();
     const currentSong = usePlayerSong();
+    const playbackCollection = useCurrentPlaybackCollection();
     const { currentStationArt } = useRadioPlayer();
     const status = usePlayerStatus();
     const { mediaNext, mediaPrevious, mediaTogglePlayPause } = usePlayer();
@@ -209,15 +211,9 @@ export const MobilePlayerbar = () => {
                                         onClick={handleToggleFullScreenPlayer}
                                         overflow="hidden"
                                         size="xs"
-                                        to={
-                                            currentSong?.albumId
-                                                ? generatePath(AppRoute.LIBRARY_ALBUMS_DETAIL, {
-                                                      albumId: currentSong.albumId,
-                                                  })
-                                                : ''
-                                        }
+                                        to={playbackCollection.to}
                                     >
-                                        {currentSong?.album || '—'}
+                                        {playbackCollection.name}
                                     </Text>
                                 </div>
                             </>

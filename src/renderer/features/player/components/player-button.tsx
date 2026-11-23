@@ -9,6 +9,7 @@ import { Tooltip, TooltipProps } from '/@/shared/components/tooltip/tooltip';
 import { PlaybackSelectors } from '/@/shared/constants/playback-selectors';
 
 interface PlayerButtonProps extends Omit<ActionIconProps, 'icon' | 'variant'> {
+    emphasizeActive?: boolean;
     icon: ReactNode;
     isActive?: boolean;
     tooltip?: Omit<TooltipProps, 'children'>;
@@ -16,13 +17,14 @@ interface PlayerButtonProps extends Omit<ActionIconProps, 'icon' | 'variant'> {
 }
 
 export const PlayerButton = forwardRef<HTMLButtonElement, PlayerButtonProps>(
-    ({ icon, isActive, tooltip, variant, ...rest }: PlayerButtonProps, ref) => {
+    ({ emphasizeActive, icon, isActive, tooltip, variant, ...rest }: PlayerButtonProps, ref) => {
         if (tooltip) {
             return (
                 <Tooltip {...tooltip}>
                     <ActionIcon
                         className={clsx({
                             [styles.active]: isActive,
+                            [styles.activeEmphasis]: emphasizeActive && isActive,
                         })}
                         ref={ref}
                         {...rest}
@@ -42,6 +44,7 @@ export const PlayerButton = forwardRef<HTMLButtonElement, PlayerButtonProps>(
             <ActionIcon
                 className={clsx(styles.playerButton, styles[variant], {
                     [styles.active]: isActive,
+                    [styles.activeEmphasis]: emphasizeActive && isActive,
                 })}
                 ref={ref}
                 {...rest}

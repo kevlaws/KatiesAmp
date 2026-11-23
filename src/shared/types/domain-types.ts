@@ -78,12 +78,15 @@ export interface QueueData {
 }
 
 export type QueueSong = Song & {
+    _contextAlbumName?: null | string;
     _contextPlaylistId?: null | string;
+    _contextPlaylistName?: null | string;
     _uniqueId: string;
 };
 
 export interface QueueSource {
     id: string;
+    name?: string;
     trackIds: string[];
     type: LibraryItem.ALBUM | LibraryItem.PLAYLIST;
 }

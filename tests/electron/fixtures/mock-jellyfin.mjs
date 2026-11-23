@@ -33,6 +33,21 @@ const makeWave = (durationSeconds = 12, amplitude = 4_000, frequency = 220) => {
     return buffer;
 };
 
+const makeMp3 = (durationSeconds = 12) => {
+    const sampleRate = 44_100;
+    const samplesPerFrame = 1_152;
+    const frameLength = 417;
+    const frameCount = Math.ceil((durationSeconds * sampleRate) / samplesPerFrame);
+    const frameHeader = Buffer.from([0xff, 0xfb, 0x90, 0x64]);
+    const buffer = Buffer.alloc(frameCount * frameLength);
+
+    for (let index = 0; index < frameCount; index += 1) {
+        frameHeader.copy(buffer, index * frameLength);
+    }
+
+    return buffer;
+};
+
 const createSong = (index, albumId = 'album-1') => ({
     Album: 'Automation Album',
     AlbumArtist: 'Automation Artist',
@@ -166,14 +181,14 @@ const writeAudio = async (response, audio, delayMs) => {
     response.end();
 };
 
-const sendAudio = async (request, response, audio, delayMs = 0) => {
+const sendAudio = async (request, response, audio, delayMs = 0, contentType = 'audio/wav') => {
     const range = request.headers.range;
     if (!range) {
         response.writeHead(200, {
             'Accept-Ranges': 'bytes',
             'Access-Control-Allow-Origin': '*',
             'Content-Length': audio.length,
-            'Content-Type': 'audio/wav',
+            'Content-Type': contentType,
         });
         await writeAudio(response, audio, delayMs);
         return;
@@ -188,17 +203,31 @@ const sendAudio = async (request, response, audio, delayMs = 0) => {
         'Access-Control-Allow-Origin': '*',
         'Content-Length': chunk.length,
         'Content-Range': `bytes ${start}-${end}/${audio.length}`,
-        'Content-Type': 'audio/wav',
+        'Content-Type': contentType,
     });
     await writeAudio(response, chunk, delayMs);
+};
+
+const interruptAudioResponse = (response, audio, contentType) => {
+    response.writeHead(200, {
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Content-Length': audio.length,
+        'Content-Type': contentType,
+    });
+    response.flushHeaders();
+    response.write(audio.subarray(0, Math.max(1, Math.floor(audio.length / 3))));
+    setImmediate(() => response.destroy());
 };
 
 export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
     const state = {
         audioDelayMs: 0,
         available: true,
+        corruptDownloadIds: new Set(),
         deniedItemIds: new Set(),
         failedDownloadIds: new Set(),
+        interruptedDownloadIds: new Set(),
         library: createLibrary(songCount),
         musicFolders: [
             {
@@ -208,6 +237,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         ],
         requests: [],
         unexpectedRequests: [],
+        unsupportedDownloadIds: new Set(),
     };
     state.playlistSongIds = state.library.songs.map((song) => song.Id);
     const audioFixtures = [
@@ -217,6 +247,9 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
     ];
     const audioBySongId = new Map(
         state.library.songs.map((song, index) => [song.Id, audioFixtures[Math.min(index, 2)]]),
+    );
+    const audioContentTypeBySongId = new Map(
+        state.library.songs.map((song) => [song.Id, 'audio/wav']),
     );
 
     const server = http.createServer(async (request, response) => {
@@ -450,12 +483,21 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                 sendJson(response, 503, { error: `Forced download failure for ${songId}` });
                 return;
             }
-            await sendAudio(
-                request,
-                response,
-                audioBySongId.get(songId) || audioBySongId.values().next().value,
-                state.audioDelayMs,
-            );
+            const audio = audioBySongId.get(songId) || audioBySongId.values().next().value;
+            const contentType = audioContentTypeBySongId.get(songId) || 'audio/wav';
+            if (pathname.endsWith('/download') && state.interruptedDownloadIds.has(songId)) {
+                state.interruptedDownloadIds.delete(songId);
+                interruptAudioResponse(response, audio, contentType);
+                return;
+            }
+            let responseAudio = audio;
+            if (pathname.endsWith('/download') && state.corruptDownloadIds.has(songId)) {
+                responseAudio = Buffer.alloc(audio.length, 0xa5);
+            } else if (pathname.endsWith('/download') && state.unsupportedDownloadIds.has(songId)) {
+                responseAudio = Buffer.alloc(audio.length);
+                Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0]).copy(responseAudio);
+            }
+            await sendAudio(request, response, responseAudio, state.audioDelayMs, contentType);
             return;
         }
 
@@ -515,11 +557,36 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         setAvailable: (available) => {
             state.available = available;
         },
+        setCorruptDownloadIds: (ids) => {
+            state.corruptDownloadIds = new Set(ids);
+        },
         setDeniedItemIds: (ids) => {
             state.deniedItemIds = new Set(ids);
         },
         setFailedDownloadIds: (ids) => {
             state.failedDownloadIds = new Set(ids);
+        },
+        setInterruptedDownloadIds: (ids) => {
+            state.interruptedDownloadIds = new Set(ids);
+        },
+        setMp3AudioIds: (ids) => {
+            for (const id of ids) {
+                const song = state.library.songs.find((item) => item.Id === id);
+                if (!song) throw new Error(`Unknown mock song ${id}`);
+
+                const audio = makeMp3(12);
+                audioBySongId.set(id, audio);
+                audioContentTypeBySongId.set(id, 'audio/mpeg');
+                song.Container = 'mp3';
+                song.MediaSources[0].Bitrate = 128_000;
+                song.MediaSources[0].Container = 'mp3';
+                song.MediaSources[0].MediaStreams[0].BitRate = 128_000;
+                song.MediaSources[0].MediaStreams[0].Channels = 2;
+                song.MediaSources[0].MediaStreams[0].Codec = 'mp3';
+                song.MediaSources[0].MediaStreams[0].SampleRate = 44_100;
+                song.MediaSources[0].Path = `C:\\MockMusic\\${song.Name}.mp3`;
+                song.MediaSources[0].Size = audio.length;
+            }
         },
         setMusicFolders: (folders) => {
             state.musicFolders = folders;
@@ -527,6 +594,18 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         setPlaylistSongIds: (ids) => {
             state.playlistSongIds = [...ids];
             state.library.playlist.ChildCount = ids.length;
+        },
+        setSongDuration: (id, durationSeconds) => {
+            const song = state.library.songs.find((item) => item.Id === id);
+            if (!song) throw new Error(`Unknown mock song ${id}`);
+
+            const audio = makeWave(durationSeconds);
+            audioBySongId.set(id, audio);
+            song.RunTimeTicks = durationSeconds * TICKS_PER_SECOND;
+            song.MediaSources[0].Size = audio.length;
+        },
+        setUnsupportedDownloadIds: (ids) => {
+            state.unsupportedDownloadIds = new Set(ids);
         },
         state,
         updateSong: (id, changes) => {
