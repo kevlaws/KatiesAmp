@@ -19,12 +19,13 @@ import {
 } from '/@/shared/types/domain-types';
 
 export const getPlaylistSongsById = async (args: {
+    forceRefresh?: boolean;
     id: string;
     query?: Partial<PlaylistSongListQueryClientSide>;
     queryClient: QueryClient;
     serverId: string;
 }) => {
-    const { id, query, queryClient, serverId } = args;
+    const { forceRefresh = false, id, query, queryClient, serverId } = args;
 
     const queryFilter: PlaylistSongListQuery = {
         id,
@@ -43,7 +44,7 @@ export const getPlaylistSongsById = async (args: {
                 query: queryFilter,
             }),
         queryKey,
-        staleTime: 1000 * 60,
+        staleTime: forceRefresh ? 0 : 1000 * 60,
     });
 
     if (res) {

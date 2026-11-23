@@ -11,6 +11,7 @@ export type OfflineAlbum = {
 
 export type OfflineAlbumSyncRequest = {
     album: Pick<OfflineAlbum, 'automatic' | 'id' | 'name' | 'serverId'>;
+    preserveExisting?: boolean;
     silent?: boolean;
     tracks: OfflineDownloadRequest[];
 };
@@ -83,10 +84,12 @@ export type OfflinePlaylist = {
     serverId: string;
     songIds: string[];
     syncedAt: string;
+    trackCount?: number;
 };
 
 export type OfflinePlaylistSyncRequest = {
     playlist: Pick<OfflinePlaylist, 'id' | 'name' | 'serverId'>;
+    preserveExisting?: boolean;
     silent?: boolean;
     tracks: OfflineDownloadRequest[];
 };

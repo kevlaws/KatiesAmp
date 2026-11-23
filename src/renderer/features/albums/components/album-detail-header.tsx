@@ -201,7 +201,7 @@ export const AlbumDetailHeader = forwardRef<HTMLDivElement>((_props, ref) => {
                         downloadLabel={downloadAction.compactLabel}
                         favorite={detailQuery?.data?.userFavorite}
                         isDownloaded={downloadAction.isAvailableOffline}
-                        isDownloadPending={downloadAction.isPending}
+                        isDownloadPending={downloadAction.isDownloadPending}
                         onDownload={() => void downloadAction.onSelect()}
                         onFavorite={handleFavorite}
                         onPlay={(type) => handlePlay(type)}

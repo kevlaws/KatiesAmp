@@ -9,6 +9,7 @@ import isElectron from 'is-electron';
 import { shallow } from 'zustand/shallow';
 import { createWithEqualityFn } from 'zustand/traditional';
 
+import { getOfflinePlaylistStatusCounts } from '/@/renderer/features/offline/utils/offline-playlist-status';
 import { logger } from '/@/renderer/utils/logger';
 import { LibraryItem } from '/@/shared/types/domain-types';
 
@@ -193,7 +194,7 @@ const taskProgress = (task: OfflineDownloadTask) => {
     return Math.round(Math.min(1, Math.max(0, value)) * 100);
 };
 
-const getStatus = (
+export const getOfflineItemStatus = (
     state: OfflineDownloadState,
     item: OfflineStatusItem,
     itemType: LibraryItem,
@@ -239,18 +240,25 @@ const getStatus = (
         complete = Boolean(state.completeAlbums[key]) && downloaded >= total;
     } else {
         const key = itemKey(serverId, item.id);
-        downloaded = state.playlistCounts[key] ?? 0;
-        total ||= state.playlists[key]?.songIds.length ?? downloaded;
-        complete = Boolean(state.completePlaylists[key]) && downloaded >= total;
+        const playlist = state.playlists[key];
+        const playlistStatus = getOfflinePlaylistStatusCounts({
+            currentTrackCount: item.songCount,
+            downloadedUniqueTracks: state.playlistCounts[key] ?? 0,
+            storedTrackCount: playlist?.trackCount,
+            storedUniqueTracks: playlist?.songIds.length ?? 0,
+        });
+        downloaded = playlistStatus.downloaded;
+        total = playlistStatus.total;
+        complete = Boolean(state.completePlaylists[key]) && playlistStatus.complete;
     }
 
     if (latestTask?.state === 'queued' || latestTask?.state === 'downloading') {
         return { downloaded, progress: taskProgress(latestTask), state: 'downloading', total };
     }
+    if (complete) return { downloaded, progress: 100, state: 'complete', total };
     if (latestTask?.state === 'error') {
         return { downloaded, progress: taskProgress(latestTask), state: 'error', total };
     }
-    if (complete) return { downloaded, progress: 100, state: 'complete', total };
     if (downloaded > 0) {
         return {
             downloaded,
@@ -263,4 +271,4 @@ const getStatus = (
 };
 
 export const useOfflineItemStatus = (item: OfflineStatusItem, itemType: LibraryItem) =>
-    useOfflineDownloadStore((state) => getStatus(state, item, itemType), shallow);
+    useOfflineDownloadStore((state) => getOfflineItemStatus(state, item, itemType), shallow);
