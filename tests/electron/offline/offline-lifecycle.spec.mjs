@@ -1,3 +1,4 @@
+import { parseFile } from 'music-metadata';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -75,6 +76,30 @@ const resolveOfflineSong = (page, songId) =>
         return entry ? window.api.offline.resolve(entry.song._serverId, id) : null;
     }, songId);
 
+const findPartFiles = async (rootDirectory) => {
+    const directories = [rootDirectory];
+    const partFiles = [];
+
+    while (directories.length > 0) {
+        const directory = directories.pop();
+        let entries;
+        try {
+            entries = await fs.readdir(directory, { withFileTypes: true });
+        } catch (error) {
+            if (error?.code === 'ENOENT') continue;
+            throw error;
+        }
+
+        for (const entry of entries) {
+            const entryPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) directories.push(entryPath);
+            else if (entry.name.endsWith('.part')) partFiles.push(entryPath);
+        }
+    }
+
+    return partFiles;
+};
+
 test('@nightly displays live progress, supports cancellation, and retries the batch', async ({
     mockJellyfin,
     page,
@@ -136,6 +161,61 @@ test('@nightly exposes a failed download and successfully retries it', async ({
     mockJellyfin.setFailedDownloadIds([]);
     await panel.getByRole('button', { name: 'Retry' }).click();
     await waitForTaskState(page, 'complete');
+});
+
+test('@nightly accepts and publishes a structurally valid MP3 download', async ({
+    mockJellyfin,
+    page,
+}) => {
+    mockJellyfin.setMp3AudioIds(['song-1']);
+    await login(page);
+    await downloadSong(page);
+    await waitForTaskState(page, 'complete');
+
+    const source = await resolveOfflineSong(page, 'song-1');
+    expect(source).not.toBeNull();
+    expect(path.extname(source.filePath)).toBe('.mp3');
+
+    const metadata = await parseFile(source.filePath, { duration: true, skipCovers: true });
+    expect(metadata.format.container).toBe('MPEG');
+    expect(metadata.format.codec).toContain('Layer 3');
+    expect(metadata.format.sampleRate).toBe(44_100);
+    expect(metadata.format.numberOfChannels).toBe(2);
+    expect(metadata.format.duration).toBeGreaterThanOrEqual(12);
+});
+
+test('@nightly discards an interrupted response and publishes only a successful retry', async ({
+    mockJellyfin,
+    page,
+}) => {
+    mockJellyfin.setInterruptedDownloadIds(['song-1']);
+    await login(page);
+    const storageDirectory = await page.evaluate(() =>
+        window.api.offline.getStorageInfo().then((info) => info.defaultDirectory),
+    );
+
+    await downloadSong(page);
+    await waitForTaskState(page, 'error');
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                window.api.offline
+                    .list()
+                    .then((entries) => entries.some((entry) => entry.song.id === 'song-1')),
+            ),
+        )
+        .toBe(false);
+    expect(await findPartFiles(storageDirectory)).toEqual([]);
+
+    const panel = await openDownloads(page);
+    await expect(panel.getByText('error', { exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'Retry' }).click();
+    await waitForTaskState(page, 'complete');
+
+    const source = await resolveOfflineSong(page, 'song-1');
+    expect(source).not.toBeNull();
+    expect((await fs.stat(source.filePath)).size).toBeGreaterThan(0);
+    expect(await findPartFiles(storageDirectory)).toEqual([]);
 });
 
 test('@nightly safely coalesces overlapping downloads of the same track', async ({
@@ -364,6 +444,221 @@ test('@nightly restores a managed offline track when its local file is missing',
         .toBeGreaterThan(downloadsBeforeSync);
     await waitForTaskState(page, 'complete');
     await expect.poll(() => resolveOfflineSong(page, 'song-1')).not.toBeNull();
+});
+
+test('@nightly rejects and restores a truncated managed offline track', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    await downloadAlbum(page);
+    await waitForAlbumAvailableOffline(page);
+
+    const source = await resolveOfflineSong(page, 'song-1');
+    expect(source).not.toBeNull();
+    const completeFile = await fs.stat(source.filePath);
+    await fs.truncate(source.filePath, Math.max(1, Math.floor(completeFile.size / 4)));
+
+    await expect.poll(() => resolveOfflineSong(page, 'song-1')).toBeNull();
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                window.api.offline
+                    .list()
+                    .then((entries) => entries.some((entry) => entry.song.id === 'song-1')),
+            ),
+        )
+        .toBe(false);
+
+    const downloadsBeforeSync = mockJellyfin.state.requests.filter((request) =>
+        request.pathname.toLowerCase().includes('/items/song-1/download'),
+    ).length;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+    await expect
+        .poll(
+            () =>
+                mockJellyfin.state.requests.filter((request) =>
+                    request.pathname.toLowerCase().includes('/items/song-1/download'),
+                ).length,
+            { timeout: 20_000 },
+        )
+        .toBeGreaterThan(downloadsBeforeSync);
+    await waitForTaskState(page, 'complete');
+    await expect.poll(() => resolveOfflineSong(page, 'song-1')).not.toBeNull();
+
+    const restoredSource = await resolveOfflineSong(page, 'song-1');
+    expect((await fs.stat(restoredSource.filePath)).size).toBe(completeFile.size);
+});
+
+test('@nightly refuses to publish a download whose bytes do not match the source size', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+
+    const result = await page.evaluate(
+        async ({ downloadUrl }) => {
+            try {
+                await window.api.offline.syncAlbum({
+                    album: {
+                        id: 'offline-size-check-album',
+                        name: 'Offline Size Check Album',
+                        serverId: 'offline-size-check-server',
+                    },
+                    tracks: [
+                        {
+                            song: {
+                                _serverId: 'offline-size-check-server',
+                                album: 'Offline Size Check Album',
+                                albumId: 'offline-size-check-album',
+                                artists: ['Automation Artist'],
+                                bitRate: 128_000,
+                                codec: 'pcm_s16le',
+                                container: 'wav',
+                                duration: 12_000,
+                                id: 'offline-size-check-song',
+                                imageUrl: null,
+                                name: 'Incomplete Automation Track',
+                                sampleRate: 8_000,
+                                size: 192_045,
+                                updatedAt: '2026-01-01T00:00:00.000Z',
+                            },
+                            url: downloadUrl,
+                        },
+                    ],
+                });
+                return { error: null };
+            } catch (error) {
+                return { error: error instanceof Error ? error.message : String(error) };
+            }
+        },
+        { downloadUrl: `${mockJellyfin.url}/Items/song-1/Download` },
+    );
+
+    expect(result.error).toContain('Offline download size mismatch');
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                window.api.offline.resolve('offline-size-check-server', 'offline-size-check-song'),
+            ),
+        )
+        .toBeNull();
+});
+
+test('@nightly refuses to publish an unreadable audio download', async ({ mockJellyfin, page }) => {
+    await login(page);
+    mockJellyfin.setCorruptDownloadIds(['song-1']);
+
+    const result = await page.evaluate(
+        async ({ downloadUrl }) => {
+            try {
+                await window.api.offline.syncAlbum({
+                    album: {
+                        id: 'offline-audio-check-album',
+                        name: 'Offline Audio Check Album',
+                        serverId: 'offline-audio-check-server',
+                    },
+                    tracks: [
+                        {
+                            song: {
+                                _serverId: 'offline-audio-check-server',
+                                album: 'Offline Audio Check Album',
+                                albumId: 'offline-audio-check-album',
+                                artists: ['Automation Artist'],
+                                bitRate: 128_000,
+                                codec: 'pcm_s16le',
+                                container: 'wav',
+                                duration: 12_000,
+                                id: 'offline-audio-check-song',
+                                imageUrl: null,
+                                name: 'Unreadable Automation Track',
+                                sampleRate: 8_000,
+                                size: 192_044,
+                                updatedAt: '2026-01-01T00:00:00.000Z',
+                            },
+                            url: downloadUrl,
+                        },
+                    ],
+                });
+                return { error: null };
+            } catch (error) {
+                return { error: error instanceof Error ? error.message : String(error) };
+            }
+        },
+        { downloadUrl: `${mockJellyfin.url}/Items/song-1/Download` },
+    );
+
+    expect(result.error).toContain('Offline download audio validation failed');
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                window.api.offline.resolve(
+                    'offline-audio-check-server',
+                    'offline-audio-check-song',
+                ),
+            ),
+        )
+        .toBeNull();
+});
+
+test('@nightly refuses a same-size non-audio download declared as WAV', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    mockJellyfin.setUnsupportedDownloadIds(['song-1']);
+
+    const result = await page.evaluate(
+        async ({ downloadUrl }) => {
+            try {
+                await window.api.offline.syncAlbum({
+                    album: {
+                        id: 'offline-unsupported-check-album',
+                        name: 'Offline Unsupported Check Album',
+                        serverId: 'offline-unsupported-check-server',
+                    },
+                    tracks: [
+                        {
+                            song: {
+                                _serverId: 'offline-unsupported-check-server',
+                                album: 'Offline Unsupported Check Album',
+                                albumId: 'offline-unsupported-check-album',
+                                artists: ['Automation Artist'],
+                                bitRate: 128_000,
+                                codec: 'pcm_s16le',
+                                container: 'wav',
+                                duration: 12_000,
+                                id: 'offline-unsupported-check-song',
+                                imageUrl: null,
+                                name: 'Unsupported Automation Track',
+                                sampleRate: 8_000,
+                                size: 192_044,
+                                updatedAt: '2026-01-01T00:00:00.000Z',
+                            },
+                            url: downloadUrl,
+                        },
+                    ],
+                });
+                return { error: null };
+            } catch (error) {
+                return { error: error instanceof Error ? error.message : String(error) };
+            }
+        },
+        { downloadUrl: `${mockJellyfin.url}/Items/song-1/Download` },
+    );
+
+    expect(result.error).toContain('Offline download audio validation failed');
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                window.api.offline.resolve(
+                    'offline-unsupported-check-server',
+                    'offline-unsupported-check-song',
+                ),
+            ),
+        )
+        .toBeNull();
 });
 
 test('@nightly keeps silent album maintenance out of visible download status', async ({

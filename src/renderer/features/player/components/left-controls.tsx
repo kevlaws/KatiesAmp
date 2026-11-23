@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { generatePath, Link } from 'react-router';
+import { Link } from 'react-router';
 import { shallow } from 'zustand/shallow';
 
 import styles from './left-controls.module.css';
@@ -14,6 +14,7 @@ import {
 } from '/@/renderer/features/albums/components/joined-artists';
 import { ContextMenuController } from '/@/renderer/features/context-menu/context-menu-controller';
 import { RadioMetadataDisplay } from '/@/renderer/features/player/components/radio-metadata-display';
+import { useCurrentPlaybackCollection } from '/@/renderer/features/player/hooks/use-current-playback-collection';
 import {
     useIsRadioActive,
     useRadioPlayer,
@@ -56,6 +57,7 @@ export const LeftControls = () => {
     );
 
     const currentSong = usePlayerSong();
+    const playbackCollection = useCurrentPlaybackCollection();
     const isRadioActive = useIsRadioActive();
     const { currentStationArt } = useRadioPlayer();
     const { bindings } = useHotkeySettings();
@@ -292,15 +294,9 @@ export const LeftControls = () => {
                                     isLink
                                     overflow="hidden"
                                     size="md"
-                                    to={
-                                        currentSong?.albumId
-                                            ? generatePath(AppRoute.LIBRARY_ALBUMS_DETAIL, {
-                                                  albumId: currentSong.albumId,
-                                              })
-                                            : ''
-                                    }
+                                    to={playbackCollection.to}
                                 >
-                                    {currentSong?.album || '—'}
+                                    {playbackCollection.name}
                                 </Text>
                             </div>
                         </>

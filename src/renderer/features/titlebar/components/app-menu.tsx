@@ -1,10 +1,11 @@
 import isElectron from 'is-electron';
-import { Fragment, ReactNode } from 'react';
+import { Fragment, ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
 import styles from './app-menu.module.css';
 
+import { SignalPathPanel } from '/@/renderer/features/player/signal-path/signal-path-modal';
 import { UpdateAvailableButton } from '/@/renderer/features/settings/components/update-available-button';
 import { useManualUpdateCheck } from '/@/renderer/features/settings/hooks/use-manual-update-check';
 import { openSettingsModal } from '/@/renderer/features/settings/utils/open-settings-modal';
@@ -24,10 +25,47 @@ import { DropdownMenu, MenuItemProps } from '/@/shared/components/dropdown-menu/
 import { Flex } from '/@/shared/components/flex/flex';
 import { Group } from '/@/shared/components/group/group';
 import { Icon } from '/@/shared/components/icon/icon';
+import { Popover } from '/@/shared/components/popover/popover';
 import { toast } from '/@/shared/components/toast/toast';
 
 const browser = isElectron() ? window.api.browser : null;
 const MANUAL_UPDATE_TOAST_ID = 'manual-update-check';
+
+const SignalPathMenuItem = () => {
+    const { t } = useTranslation();
+    const [opened, setOpened] = useState(false);
+    const label = t('page.appMenu.signalPath');
+
+    return (
+        <Popover
+            middlewares={{ flip: true, shift: true }}
+            onChange={setOpened}
+            opened={opened}
+            position="right-start"
+        >
+            <Popover.Target>
+                <DropdownMenu.Item
+                    aria-expanded={opened}
+                    aria-haspopup="dialog"
+                    closeMenuOnClick={false}
+                    leftSection={<Icon icon="audioLines" />}
+                    onClick={() => setOpened((current) => !current)}
+                >
+                    {label}
+                </DropdownMenu.Item>
+            </Popover.Target>
+            <Popover.Dropdown
+                aria-label={label}
+                data-testid="signal-path-popout"
+                onClick={(event) => event.stopPropagation()}
+                p={0}
+                role="dialog"
+            >
+                <SignalPathPanel />
+            </Popover.Dropdown>
+        </Popover>
+    );
+};
 
 interface BaseMenuItem {
     id: string;
@@ -221,6 +259,11 @@ export const AppMenu = () => {
             label: t('page.appMenu.settings'),
             onClick: () => openSettingsModal(),
             type: 'item',
+        },
+        {
+            component: <SignalPathMenuItem />,
+            id: 'signal-path',
+            type: 'custom',
         },
         {
             id: 'divider-4',

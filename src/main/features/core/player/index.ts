@@ -8,6 +8,11 @@ import process from 'process';
 import { getMainWindow, sendToastToRenderer } from '../../../index';
 import log from '../../../logger';
 import { store } from '../settings';
+import {
+    appendAutoNextMpvQueueEntry,
+    appendInsertedMpvQueueEntry,
+    replaceMpvQueueEntries,
+} from './mpv-queue-load';
 
 import { isMacOS, isWindows } from '/@/main/env';
 import { PlayerData } from '/@/shared/types/domain-types';
@@ -481,7 +486,14 @@ ipcMain.on('player-seek-to', async (_event, time: number) => {
 // Sets the queue in position 0 and 1 to the given data. Used when manually starting a song or using the next/prev buttons
 ipcMain.handle(
     'player-set-queue',
-    async (_event, current?: string, next?: string, pause?: boolean) => {
+    async (
+        _event,
+        current?: string,
+        next?: string,
+        pause?: boolean,
+        currentOptions?: string[],
+        nextOptions?: string[],
+    ) => {
         if (!current && !next) {
             try {
                 await getMpvInstance()?.clearPlaylist();
@@ -499,15 +511,20 @@ ipcMain.handle(
 
         try {
             if (current) {
-                try {
-                    await getMpvInstance()?.load(current, 'replace');
-                } catch (error: any | NodeMpvError) {
-                    mpvLog({ action: `Failed to load current song` }, error);
-                    await getMpvInstance()?.play();
-                }
-
-                if (next) {
-                    await getMpvInstance()?.load(next, 'append');
+                const mpv = getMpvInstance();
+                if (mpv) {
+                    await replaceMpvQueueEntries(
+                        mpv,
+                        { options: currentOptions, url: current },
+                        { options: nextOptions, url: next },
+                        async (error) => {
+                            mpvLog(
+                                { action: `Failed to load current song` },
+                                error as NodeMpvError,
+                            );
+                            await mpv.play();
+                        },
+                    );
                 }
             }
 
@@ -526,7 +543,7 @@ ipcMain.handle(
 );
 
 // Replaces the queue in position 1 to the given data
-ipcMain.on('player-set-queue-next', async (_event, url?: string) => {
+ipcMain.on('player-set-queue-next', async (_event, url?: string, options?: string[]) => {
     try {
         const size = await getMpvInstance()?.getPlaylistSize();
 
@@ -535,7 +552,10 @@ ipcMain.on('player-set-queue-next', async (_event, url?: string) => {
         }
 
         if (url) {
-            getMpvInstance()?.load(url, 'append');
+            const mpv = getMpvInstance();
+            if (mpv) {
+                await appendInsertedMpvQueueEntry(mpv, { options, url });
+            }
         }
     } catch (err: any | NodeMpvError) {
         mpvLog({ action: `Failed to set play queue` }, err);
@@ -543,7 +563,7 @@ ipcMain.on('player-set-queue-next', async (_event, url?: string) => {
 });
 
 // Sets the next song in the queue when reaching the end of the queue
-ipcMain.on('player-auto-next', async (_event, url?: string) => {
+ipcMain.on('player-auto-next', async (_event, url?: string, options?: string[]) => {
     // Always keep the current song as position 0 in the mpv queue
     // This allows us to easily set update the next song in the queue without
     // disturbing the currently playing song
@@ -556,7 +576,10 @@ ipcMain.on('player-auto-next', async (_event, url?: string) => {
             });
 
         if (url) {
-            await getMpvInstance()?.load(url, 'append');
+            const mpv = getMpvInstance();
+            if (mpv) {
+                await appendAutoNextMpvQueueEntry(mpv, { options, url });
+            }
         }
     } catch (err: any | NodeMpvError) {
         mpvLog({ action: `Failed to load next song` }, err);

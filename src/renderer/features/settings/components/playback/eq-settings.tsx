@@ -3,17 +3,24 @@ import isElectron from 'is-electron';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import {
-    buildMpvAudioFilters,
-    type CompressorSettings,
-    type EqSettings as EqSettingsType,
-} from './mpv-audio-filters';
+import { type CompressorSettings, type EqSettings as EqSettingsType } from './mpv-audio-filters';
 
+import { eventEmitter } from '/@/renderer/events/event-emitter';
+import {
+    getMpvTrackAudioConfiguration,
+    getMpvTrackAudioProperties,
+    MPV_AUDIO_CONFIGURATION_CHANGED,
+} from '/@/renderer/features/player/audio-player/utils/mpv-track-audio';
 import {
     SettingOption,
     SettingsSection,
 } from '/@/renderer/features/settings/components/settings-section';
-import { usePlaybackSettings, useSettingsStoreActions } from '/@/renderer/store/settings.store';
+import { usePlayerStore } from '/@/renderer/store/player.store';
+import {
+    usePlaybackSettings,
+    useSettingsStore,
+    useSettingsStoreActions,
+} from '/@/renderer/store/settings.store';
 import { Button } from '/@/shared/components/button/button';
 import { Divider } from '/@/shared/components/divider/divider';
 import { Group } from '/@/shared/components/group/group';
@@ -274,16 +281,18 @@ export const EqSettings = memo(() => {
     const applyFilters = useCallback(
         (eq: EqSettingsType, compressor: CompressorSettings) => {
             if (settings.type === PlayerType.LOCAL) {
-                const filterStr = buildMpvAudioFilters(
-                    eq,
+                const playback = {
+                    ...useSettingsStore.getState().playback,
                     compressor,
-                    settings.volumeLevelingMode,
-                    settings.venueOutputBoostDB,
-                );
-                mpvPlayer?.setProperties({ af: filterStr });
+                    equalizer: eq,
+                };
+                const song = usePlayerStore.getState().getPlayerData().currentSong;
+                const configuration = getMpvTrackAudioConfiguration(song, playback);
+                mpvPlayer?.setProperties(getMpvTrackAudioProperties(configuration));
+                eventEmitter.emit(MPV_AUDIO_CONFIGURATION_CHANGED, {});
             }
         },
-        [settings.type, settings.venueOutputBoostDB, settings.volumeLevelingMode],
+        [settings.type],
     );
 
     // ── EQ handlers ──────────────────────────────────────────────────────────

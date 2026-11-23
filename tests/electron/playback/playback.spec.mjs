@@ -1,5 +1,31 @@
 import { expect, getSongCell, login, navigateTo, test } from '../fixtures/katiesamp-test.mjs';
 
+const seedCrossfadeDuration = (page, duration) =>
+    page.evaluate(
+        ({ savedDuration }) =>
+            new Promise((resolve, reject) => {
+                const request = indexedDB.open('keyval-store');
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const database = request.result;
+                    const transaction = database.transaction('keyval', 'readwrite');
+                    transaction.onerror = () => reject(transaction.error);
+                    transaction.oncomplete = () => {
+                        database.close();
+                        resolve(undefined);
+                    };
+                    transaction.objectStore('keyval').put(
+                        JSON.stringify({
+                            state: { player: { crossfadeDuration: savedDuration } },
+                            version: 3,
+                        }),
+                        'player-store',
+                    );
+                };
+            }),
+        { savedDuration: duration },
+    );
+
 test('@nightly starts a fixture track from the songs library', async ({ mockJellyfin, page }) => {
     await login(page);
     await navigateTo(page, '/library/songs');
@@ -41,6 +67,9 @@ test('@full adds a song next without interrupting the current track', async ({ p
 
 test('@full fades into the next queued track without advancing twice', async ({ page }) => {
     await login(page);
+    await seedCrossfadeDuration(page, 3);
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
     await navigateTo(page, '/library/songs');
 
     const firstSong = getSongCell(page, 'Automation Track 1');

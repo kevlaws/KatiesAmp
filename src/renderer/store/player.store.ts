@@ -363,7 +363,7 @@ const initialState: State = {
     hydrated: false,
     mpvInitialized: false,
     player: {
-        crossfadeDuration: 5,
+        crossfadeDuration: 21,
         crossfadeStyle: CrossfadeStyle.EQUAL_POWER,
         index: -1,
         muted: false,
@@ -1728,8 +1728,12 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
 
                     const sourceItems = items.map((item) => ({
                         ...item,
+                        _contextAlbumName:
+                            source.type === LibraryItem.ALBUM ? source.name : undefined,
                         _contextPlaylistId:
                             source.type === LibraryItem.PLAYLIST ? source.id : undefined,
+                        _contextPlaylistName:
+                            source.type === LibraryItem.PLAYLIST ? source.name : undefined,
                     }));
                     const newItems = sourceItems.map(toQueueSong);
                     const newUniqueIds = newItems.map((item) => item._uniqueId);
@@ -2556,7 +2560,9 @@ export const updateQueueSong = (songId: string, updatedSong: Song) => {
                 const uniqueId = song._uniqueId;
                 state.queue.songs[song._uniqueId] = {
                     ...updatedSong,
+                    _contextAlbumName: song._contextAlbumName,
                     _contextPlaylistId: song._contextPlaylistId,
+                    _contextPlaylistName: song._contextPlaylistName,
                     _uniqueId: uniqueId,
                 };
             }
@@ -2566,6 +2572,35 @@ export const updateQueueSong = (songId: string, updatedSong: Song) => {
 
 export const useCurrentPlaylistContextId = () => {
     return usePlayerStoreBase((state) => state.getCurrentSong()?._contextPlaylistId ?? null);
+};
+
+export const updateQueueAlbumContextName = (albumId: string, name: string) => {
+    usePlayerStoreBase.setState((state) => {
+        Object.values(state.queue.songs).forEach((song) => {
+            if (song.albumId === albumId) {
+                song._contextAlbumName = name;
+            }
+        });
+        if (state.queue.source?.type === LibraryItem.ALBUM && state.queue.source.id === albumId) {
+            state.queue.source.name = name;
+        }
+    });
+};
+
+export const updateQueuePlaylistContextName = (playlistId: string, name: string) => {
+    usePlayerStoreBase.setState((state) => {
+        Object.values(state.queue.songs).forEach((song) => {
+            if (song._contextPlaylistId === playlistId) {
+                song._contextPlaylistName = name;
+            }
+        });
+        if (
+            state.queue.source?.type === LibraryItem.PLAYLIST &&
+            state.queue.source.id === playlistId
+        ) {
+            state.queue.source.name = name;
+        }
+    });
 };
 
 export const usePlayerMuted = () => {
@@ -2971,8 +3006,12 @@ function getQueueSource(items: QueueSong[], uniqueIds: string[]): null | QueueSo
     );
 
     if (playlistIds.size === 1) {
+        const playlistId = [...playlistIds][0];
         return {
-            id: [...playlistIds][0],
+            id: playlistId,
+            name:
+                items.find((item) => item._contextPlaylistId === playlistId)
+                    ?._contextPlaylistName ?? undefined,
             trackIds: [...uniqueIds],
             type: LibraryItem.PLAYLIST,
         };
@@ -2980,8 +3019,10 @@ function getQueueSource(items: QueueSong[], uniqueIds: string[]): null | QueueSo
 
     const albumIds = new Set(items.map((item) => item.albumId).filter(Boolean));
     if (albumIds.size === 1) {
+        const albumId = [...albumIds][0];
         return {
-            id: [...albumIds][0],
+            id: albumId,
+            name: items.find((item) => item.albumId === albumId)?._contextAlbumName ?? undefined,
             trackIds: [...uniqueIds],
             type: LibraryItem.ALBUM,
         };

@@ -57,6 +57,8 @@ test('@full configures and restores automatic volume levelling', async ({ page }
 
     await selectOption(page, venueBoost, '+6 dB');
     await expect(venueBoost).toHaveValue('+6 dB');
+    await selectOption(page, venueBoost, '+12 dB');
+    await expect(venueBoost).toHaveValue('+12 dB');
 
     await selectOption(page, profile, 'Tavern');
     await expect(profile).toHaveValue('Tavern');
@@ -64,7 +66,7 @@ test('@full configures and restores automatic volume levelling', async ({ page }
     await page.reload();
     await openPlaybackSettings(page);
     await expect(profile).toHaveValue('Tavern');
-    await expect(venueBoost).toHaveValue('+6 dB');
+    await expect(venueBoost).toHaveValue('+12 dB');
 
     await enabled.uncheck({ force: true });
     await expect(profile).toHaveCount(0);
@@ -74,7 +76,7 @@ test('@full configures and restores automatic volume levelling', async ({ page }
     await openPlaybackSettings(page);
     await expect(enabled).not.toBeChecked();
     await expect(profile).toHaveCount(0);
-    await expect(venueBoost).toHaveValue('+6 dB');
+    await expect(venueBoost).toHaveValue('+12 dB');
 
     await enabled.check({ force: true });
     await expect(profile).toHaveValue('Natural');
@@ -126,24 +128,24 @@ test('@full changes venue audio controls from the player settings menu', async (
         )
         .toBeCloseTo(1.5, 5);
 
-    await selectOption(page, venueBoost, '+6 dB');
+    await selectOption(page, venueBoost, '+12 dB');
     await expect
         .poll(() =>
             page.evaluate(() => window.__katiesAmpAudioAutomation?.dsp?.venueOutputGain.gain.value),
         )
-        .toBeCloseTo(10 ** (6 / 20), 5);
+        .toBeCloseTo(10 ** (12 / 20), 5);
     await expect.poll(() => playingTime(page)).toBeGreaterThan(timeBeforeChange);
 
     await page.reload();
     await player.getByRole('button', { name: 'Settings' }).click();
     await expect(profile).toHaveValue('Tavern');
-    await expect(venueBoost).toHaveValue('+6 dB');
+    await expect(venueBoost).toHaveValue('+12 dB');
 
     await player.getByRole('button', { name: 'Settings' }).evaluate((button) => button.click());
     await expect(profile).toHaveCount(0);
     await openPlaybackSettings(page);
     await expect(profile).toHaveValue('Tavern');
-    await expect(venueBoost).toHaveValue('+6 dB');
+    await expect(venueBoost).toHaveValue('+12 dB');
 
     const enabled = page.getByRole('switch', { name: 'Automatic volume levelling' });
     await enabled.uncheck({ force: true });

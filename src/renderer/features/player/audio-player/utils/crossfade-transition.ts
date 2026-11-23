@@ -81,6 +81,24 @@ export const resolveManualCrossfadeDuration = (
     return Math.max(0.1, Math.min(configuredDuration, shortestAvailableDuration));
 };
 
+export const resolveAutomaticCrossfadeDuration = (
+    configuredDuration: number,
+    trackDurations: number[],
+): number => {
+    if (!Number.isFinite(configuredDuration) || configuredDuration <= 0) return 0;
+
+    if (
+        trackDurations.length === 0 ||
+        trackDurations.some((duration) => !Number.isFinite(duration) || duration <= 0)
+    ) {
+        return 0;
+    }
+
+    // Keep at least half of each short track outside the overlap. Without this
+    // cap, a configured 21-second crossfade starts immediately on shorter audio.
+    return Math.min(configuredDuration, Math.min(...trackDurations) / 2);
+};
+
 function clampProgress(progress: number): number {
     return Math.max(0, Math.min(1, progress));
 }

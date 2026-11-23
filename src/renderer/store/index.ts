@@ -1,6 +1,7 @@
 export * from './app.store';
 export * from './auth.store';
 export * from './full-screen-player.store';
+export * from './loudness-telemetry.store';
 export * from './player.store';
 export * from './scrobble-debug.store';
 export * from './scroll.store';

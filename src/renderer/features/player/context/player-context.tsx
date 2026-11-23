@@ -34,9 +34,11 @@ import { Text } from '/@/shared/components/text/text';
 import { toast } from '/@/shared/components/toast/toast';
 import { useLocalStorage } from '/@/shared/hooks/use-local-storage';
 import {
+    Album,
     AlbumListSort,
     instanceOfCancellationError,
     LibraryItem,
+    Playlist,
     PlaylistSongListResponse,
     QueueSong,
     Song,
@@ -169,8 +171,32 @@ const inferPlaylistContextFromUrl = (): null | string => {
 
 // Stamps each song with the playlist it was queued from, so the sidebar highlight
 // can be derived from whichever song is currently playing (see useCurrentPlaylistContextId).
-const tagPlaylistContext = (songs: Song[], contextPlaylistId: string): Song[] =>
-    songs.map((song) => ({ ...song, _contextPlaylistId: contextPlaylistId }));
+const tagPlaylistContext = (
+    songs: Song[],
+    contextPlaylistId: string,
+    contextPlaylistName?: string,
+): Song[] =>
+    songs.map((song) => ({
+        ...song,
+        _contextPlaylistId: contextPlaylistId,
+        _contextPlaylistName: contextPlaylistName,
+    }));
+
+const getCachedPlaylistName = (queryClient: QueryClient, serverId: string, playlistId: string) => {
+    const query = playlistsQueries.detail({ query: { id: playlistId }, serverId });
+    return queryClient.getQueryData<Playlist>(query.queryKey)?.name;
+};
+
+const getCachedAlbumName = (queryClient: QueryClient, serverId: string, albumId: string) => {
+    const query = albumQueries.detail({ query: { id: albumId }, serverId });
+    return queryClient.getQueryData<Album>(query.queryKey)?.name;
+};
+
+const tagCachedAlbumContexts = (queryClient: QueryClient, songs: Song[]): Song[] =>
+    songs.map((song) => ({
+        ...song,
+        _contextAlbumName: getCachedAlbumName(queryClient, song._serverId, song.albumId),
+    }));
 
 export const PlayerProvider = ({ children }: { children: React.ReactNode }) => {
     const { t } = useTranslation();
@@ -273,12 +299,19 @@ export const PlayerProvider = ({ children }: { children: React.ReactNode }) => {
             skipConfirmation?: boolean,
         ) => {
             const filters = useSettingsStore.getState().playback.filters;
-            let filteredData = filterSongsByPlayerFilters(data, filters);
+            let filteredData = tagCachedAlbumContexts(
+                queryClient,
+                filterSongsByPlayerFilters(data, filters),
+            );
             const resolvedContextId =
                 contextPlaylistId ??
                 (isReplaceQueueType(type) ? inferPlaylistContextFromUrl() : null);
             if (resolvedContextId) {
-                filteredData = tagPlaylistContext(filteredData, resolvedContextId);
+                const serverId = filteredData[0]?._serverId;
+                const playlistName = serverId
+                    ? getCachedPlaylistName(queryClient, serverId, resolvedContextId)
+                    : undefined;
+                filteredData = tagPlaylistContext(filteredData, resolvedContextId, playlistName);
             }
 
             const addToQueue = () => {
@@ -316,7 +349,7 @@ export const PlayerProvider = ({ children }: { children: React.ReactNode }) => {
                 addToQueue();
             }
         },
-        [confirmQueueChange, storeActions],
+        [confirmQueueChange, queryClient, storeActions],
     );
 
     const addToQueueByFetch = useCallback(
@@ -389,6 +422,27 @@ export const PlayerProvider = ({ children }: { children: React.ReactNode }) => {
                     filteredSongs = filteredSongs.filter(options.filter);
                 }
 
+                if (itemType === LibraryItem.ALBUM && id.length === 1) {
+                    let albumName = getCachedAlbumName(queryClient, serverId, id[0]);
+                    if (!albumName) {
+                        try {
+                            albumName = (
+                                await queryClient.fetchQuery(
+                                    albumQueries.detail({ query: { id: id[0] }, serverId }),
+                                )
+                            ).name;
+                        } catch {
+                            // Album playback should continue even when its display name
+                            // cannot be refreshed from the server.
+                        }
+                    }
+
+                    filteredSongs = filteredSongs.map((song) => ({
+                        ...song,
+                        _contextAlbumName: albumName,
+                    }));
+                }
+
                 // Songs from multiple playlists are merged together, so there is no single
                 // playlist to attribute them to: skip tagging (and URL inference) entirely.
                 const isMultiPlaylist = itemType === LibraryItem.PLAYLIST && id.length > 1;
@@ -400,7 +454,33 @@ export const PlayerProvider = ({ children }: { children: React.ReactNode }) => {
                         ? inferPlaylistContextFromUrl()
                         : null);
                 if (resolvedContextId) {
-                    filteredSongs = tagPlaylistContext(filteredSongs, resolvedContextId);
+                    let playlistName = getCachedPlaylistName(
+                        queryClient,
+                        serverId,
+                        resolvedContextId,
+                    );
+
+                    if (!playlistName) {
+                        try {
+                            playlistName = (
+                                await queryClient.fetchQuery(
+                                    playlistsQueries.detail({
+                                        query: { id: resolvedContextId },
+                                        serverId,
+                                    }),
+                                )
+                            ).name;
+                        } catch {
+                            // Playlist playback should continue even when its display name
+                            // cannot be refreshed from the server.
+                        }
+                    }
+
+                    filteredSongs = tagPlaylistContext(
+                        filteredSongs,
+                        resolvedContextId,
+                        playlistName,
+                    );
                 }
 
                 const addToQueue = () => {

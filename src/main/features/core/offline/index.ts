@@ -15,6 +15,11 @@ import type {
 } from '/@/shared/types/offline';
 
 import { app, BrowserWindow, dialog, ipcMain, net } from 'electron';
+import {
+    CouldNotDetermineFileTypeError,
+    parseFile,
+    UnsupportedFileTypeError,
+} from 'music-metadata';
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -276,6 +281,32 @@ const getFingerprint = (song: OfflineDownloadRequest['song']) =>
         song.sampleRate,
     ]);
 
+const getPositiveFileSize = (value: null | number | string | undefined) => {
+    const size = typeof value === 'string' ? Number(value) : value;
+    return typeof size === 'number' && Number.isSafeInteger(size) && size > 0 ? size : null;
+};
+
+const AUDIO_CONTAINERS_WITH_METADATA_VALIDATION = new Set([
+    'aac',
+    'aif',
+    'aiff',
+    'ape',
+    'asf',
+    'dff',
+    'dsf',
+    'flac',
+    'm4a',
+    'mp3',
+    'mp4',
+    'mpc',
+    'ogg',
+    'opus',
+    'wav',
+    'webm',
+    'wma',
+    'wv',
+]);
+
 const resolveEntryPath = (fileName: string, directory = getOfflineRoot()) => {
     const root = path.resolve(directory);
     const filePath = path.resolve(root, fileName);
@@ -286,6 +317,104 @@ const resolveEntryPath = (fileName: string, directory = getOfflineRoot()) => {
         !path.isAbsolute(relativePath)
         ? filePath
         : null;
+};
+
+const resolveValidEntryFile = async (entry: OfflineEntry) => {
+    const filePath = resolveEntryPath(entry.fileName);
+    if (!filePath) return null;
+
+    try {
+        const fileStat = await fs.stat(filePath);
+        if (!fileStat.isFile() || fileStat.size <= 0) return null;
+
+        const recordedSize = getPositiveFileSize(entry.size);
+        if (recordedSize !== null && fileStat.size !== recordedSize) return null;
+
+        const sourceSize = getPositiveFileSize(entry.song.size);
+        if (sourceSize !== null && fileStat.size !== sourceSize) return null;
+
+        return { filePath, size: fileStat.size };
+    } catch {
+        return null;
+    }
+};
+
+const assertCompleteDownload = async (
+    temporaryPath: string,
+    request: OfflineDownloadRequest,
+    response: Response,
+) => {
+    const fileStat = await fs.stat(temporaryPath);
+    if (!fileStat.isFile() || fileStat.size <= 0) {
+        throw new Error(`Offline download is empty for ${request.song.name}`);
+    }
+
+    const responseSize = getPositiveFileSize(response.headers.get('content-length'));
+    if (responseSize !== null && fileStat.size !== responseSize) {
+        throw new Error(
+            `Offline download size mismatch for ${request.song.name}: expected ${responseSize} bytes, received ${fileStat.size}`,
+        );
+    }
+
+    const sourceSize = getPositiveFileSize(request.song.size);
+    if (sourceSize !== null && fileStat.size !== sourceSize) {
+        throw new Error(
+            `Offline download size mismatch for ${request.song.name}: expected ${sourceSize} bytes, received ${fileStat.size}`,
+        );
+    }
+
+    return fileStat;
+};
+
+const assertPlayableDownload = async (temporaryPath: string, request: OfflineDownloadRequest) => {
+    let metadata;
+    try {
+        metadata = await parseFile(temporaryPath, { duration: true, skipCovers: true });
+    } catch (error) {
+        const container = request.song.container?.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const requiresMetadataValidation = AUDIO_CONTAINERS_WITH_METADATA_VALIDATION.has(
+            container || '',
+        );
+        const metadataUnavailable =
+            !requiresMetadataValidation &&
+            (error instanceof UnsupportedFileTypeError ||
+                error instanceof CouldNotDetermineFileTypeError);
+        if (metadataUnavailable) {
+            log.warn('Skipping offline audio metadata validation for an unsupported format', {
+                container,
+                serverId: request.song._serverId,
+                songId: request.song.id,
+            });
+            return;
+        }
+
+        throw new Error(`Offline download audio validation failed for ${request.song.name}`, {
+            cause: error,
+        });
+    }
+
+    if (metadata.format.hasAudio === false) {
+        throw new Error(`Offline download contains no audio for ${request.song.name}`);
+    }
+
+    const actualDuration = metadata.format.duration;
+    const expectedDuration =
+        typeof request.song.duration === 'number' && request.song.duration > 0
+            ? request.song.duration / 1000
+            : null;
+    if (
+        expectedDuration !== null &&
+        typeof actualDuration === 'number' &&
+        Number.isFinite(actualDuration) &&
+        actualDuration > 0
+    ) {
+        const allowedShortfall = Math.max(2, expectedDuration * 0.05);
+        if (actualDuration + allowedShortfall < expectedDuration) {
+            throw new Error(
+                `Offline download duration mismatch for ${request.song.name}: expected about ${expectedDuration.toFixed(1)} seconds, received ${actualDuration.toFixed(1)}`,
+            );
+        }
+    }
 };
 
 const getStorageInfo = (): OfflineStorageInfo => {
@@ -492,19 +621,14 @@ export const resolveOfflineSource = async (
     const entry = manifest.entries[getEntryKey(serverId, songId)];
     if (!entry) return null;
 
-    const filePath = resolveEntryPath(entry.fileName);
-    if (!filePath) return null;
-    try {
-        await fs.access(filePath);
-    } catch {
-        return null;
-    }
+    const validFile = await resolveValidEntryFile(entry);
+    if (!validFile) return null;
 
     const url = new URL('feishin-offline://media');
     url.searchParams.set('serverId', serverId);
     url.searchParams.set('songId', songId);
 
-    return { filePath, url: url.toString() };
+    return { filePath: validFile.filePath, url: url.toString() };
 };
 
 const download = async (
@@ -528,26 +652,14 @@ const download = async (
         const manifest = await readManifestSnapshot();
         const reusableEntry = manifest.entries[entryKey];
         if (reusableEntry?.fingerprint === getFingerprint(request.song)) {
-            const reusablePath = resolveEntryPath(reusableEntry.fileName);
-            const reusableFileExists = reusablePath
-                ? await fs
-                      .access(reusablePath)
-                      .then(() => true)
-                      .catch(() => false)
-                : false;
+            const reusableFile = await resolveValidEntryFile(reusableEntry);
 
-            if (reusableFileExists) {
+            if (reusableFile) {
                 const entry = await updateManifest(
                     async (nextManifest): Promise<null | OfflineEntry> => {
                         const existing = nextManifest.entries[entryKey];
                         if (existing?.fingerprint !== getFingerprint(request.song)) return null;
-                        const existingPath = resolveEntryPath(existing.fileName);
-                        if (!existingPath) return null;
-                        try {
-                            await fs.access(existingPath);
-                        } catch {
-                            return null;
-                        }
+                        if (!(await resolveValidEntryFile(existing))) return null;
 
                         const albumIds = new Set(existing.albumIds);
                         if (ownership.albumId) albumIds.add(ownership.albumId);
@@ -587,9 +699,10 @@ const download = async (
             createWriteStream(temporaryPath),
             { signal },
         );
+        const stat = await assertCompleteDownload(temporaryPath, request, response);
+        await assertPlayableDownload(temporaryPath, request);
         await replaceFile(temporaryPath, destinationPath);
 
-        const stat = await fs.stat(destinationPath);
         const entry = await updateManifest(async (manifest): Promise<OfflineEntry> => {
             const existing = manifest.entries[entryKey];
             if (existing && existing.fileName !== relativeFileName) {
@@ -853,15 +966,9 @@ const syncCollection = async (
     const trackStates = await Promise.all(
         tracks.map(async (track) => {
             const entry = manifest.entries[getEntryKey(collection.serverId, track.song.id)];
-            const filePath = entry && resolveEntryPath(entry.fileName);
-            const fileExists = filePath
-                ? await fs
-                      .access(filePath)
-                      .then(() => true)
-                      .catch(() => false)
-                : false;
+            const validFile = entry ? await resolveValidEntryFile(entry) : null;
             return {
-                changed: !entry || !fileExists || entry.fingerprint !== getFingerprint(track.song),
+                changed: !entry || !validFile || entry.fingerprint !== getFingerprint(track.song),
                 metadataMatches:
                     Boolean(entry) &&
                     isDeepStrictEqual(entry?.song, { ...track.song, imageUrl: null }),
@@ -1069,13 +1176,7 @@ ipcMain.handle('offline-list', async (): Promise<OfflineEntry[]> => {
     const manifest = await readManifest();
     const entries = await Promise.all(
         Object.values(manifest.entries).map(async (entry) => {
-            const filePath = resolveEntryPath(entry.fileName);
-            if (!filePath) return null;
-            const exists = await fs
-                .access(filePath)
-                .then(() => true)
-                .catch(() => false);
-            return exists ? entry : null;
+            return (await resolveValidEntryFile(entry)) ? entry : null;
         }),
     );
     return entries.filter((entry): entry is OfflineEntry => entry !== null);

@@ -21,6 +21,7 @@ import {
     calculateCrossfadeVolumes,
     captureCrossfadeTransitionSettings,
     type CrossfadeTransitionSettings,
+    resolveAutomaticCrossfadeDuration,
     resolveCrossfadeTransitionSettings,
     resolveManualCrossfadeDuration,
 } from '/@/renderer/features/player/audio-player/utils/crossfade-transition';
@@ -1008,14 +1009,23 @@ function crossfadeHandler(args: {
     }
 
     if (!isTransitioning) {
-        if (duration > 0 && currentTime > duration - crossfadeDuration) {
+        const effectiveCrossfadeDuration = resolveAutomaticCrossfadeDuration(crossfadeDuration, [
+            duration,
+            getDuration(nextPlayer.ref),
+        ]);
+
+        if (
+            duration > 0 &&
+            effectiveCrossfadeDuration > 0 &&
+            currentTime > duration - effectiveCrossfadeDuration
+        ) {
             // Skip pre-starting next player if pauseOnNextSongEnd is set
             if (usePlayerStoreBase.getState().player.pauseOnNextSongEnd) {
                 return;
             }
 
             activeCrossfadeSettingsRef.current = captureCrossfadeTransitionSettings(
-                crossfadeDuration,
+                effectiveCrossfadeDuration,
                 crossfadeStyle,
             );
             nextPlayer.setVolume(0);
