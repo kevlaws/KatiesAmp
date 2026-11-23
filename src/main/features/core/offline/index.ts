@@ -884,16 +884,6 @@ const remove = async (serverId: string, songId: string): Promise<boolean> => {
         const filePath = resolveEntryPath(entry.fileName);
         if (filePath) await fs.rm(filePath, { force: true });
         delete manifest.entries[key];
-        for (const playlist of Object.values(manifest.playlists)) {
-            if (playlist.serverId === serverId) {
-                playlist.songIds = playlist.songIds.filter((id) => id !== songId);
-            }
-        }
-        for (const album of Object.values(manifest.albums)) {
-            if (album.serverId === serverId) {
-                album.songIds = album.songIds.filter((id) => id !== songId);
-            }
-        }
         return true;
     });
 };
@@ -940,12 +930,20 @@ const removeAlbum = (serverId: string, albumId: string) =>
 const removePlaylist = (serverId: string, playlistId: string) =>
     removeCollection(serverId, playlistId, 'playlist');
 
+const mergeSongIdsInServerOrder = (serverSongIds: string[], preservedSongIds: string[]) => {
+    const mergedSongIds = new Set(serverSongIds);
+    for (const songId of preservedSongIds) mergedSongIds.add(songId);
+    return [...mergedSongIds];
+};
+
 const syncCollection = async (
     type: 'album' | 'playlist',
     collection: { automatic?: boolean; id: string; name: string; serverId: string },
     requestedTracks: OfflineDownloadRequest[],
     silent = false,
+    preserveExisting = false,
 ) => {
+    const requestedTrackCount = requestedTracks.length;
     const tracks = [...new Map(requestedTracks.map((track) => [track.song.id, track])).values()];
     const songIds = tracks.map((track) => track.song.id);
     const manifest = await readManifestSnapshot();
@@ -955,6 +953,25 @@ const syncCollection = async (
             : getPlaylistKey(collection.serverId, collection.id);
     const collections = type === 'album' ? manifest.albums : manifest.playlists;
     const existingCollection = collections[collectionKey];
+    const automatic =
+        type === 'album'
+            ? (collection.automatic ?? (existingCollection as OfflineAlbum | undefined)?.automatic)
+            : undefined;
+    const existingTrackCount =
+        type === 'playlist'
+            ? ((existingCollection as OfflinePlaylist | undefined)?.trackCount ??
+              existingCollection?.songIds.length ??
+              0)
+            : undefined;
+    const expectedTrackCount =
+        type === 'playlist'
+            ? preserveExisting
+                ? Math.max(existingTrackCount ?? 0, requestedTrackCount)
+                : requestedTrackCount
+            : undefined;
+    const expectedSongIds = preserveExisting
+        ? mergeSongIdsInServerOrder(songIds, existingCollection?.songIds ?? [])
+        : songIds;
     if (
         type === 'album' &&
         collection.automatic === true &&
@@ -986,9 +1003,10 @@ const syncCollection = async (
         existingCollection?.id === collection.id &&
         existingCollection.name === collection.name &&
         existingCollection.serverId === collection.serverId &&
-        (type !== 'album' ||
-            (existingCollection as OfflineAlbum).automatic === collection.automatic) &&
-        isDeepStrictEqual(existingCollection.songIds, songIds);
+        (type !== 'album' || (existingCollection as OfflineAlbum).automatic === automatic) &&
+        (type !== 'playlist' ||
+            (existingCollection as OfflinePlaylist).trackCount === expectedTrackCount) &&
+        isDeepStrictEqual(existingCollection.songIds, expectedSongIds);
 
     if (
         collectionMatches &&
@@ -1060,9 +1078,17 @@ const syncCollection = async (
                     ? getAlbumKey(collection.serverId, collection.id)
                     : getPlaylistKey(collection.serverId, collection.id);
             const collections = type === 'album' ? nextManifest.albums : nextManifest.playlists;
-            const previousSongIds = new Set(collections[key]?.songIds ?? []);
+            const preservedSongIds = collections[key]?.songIds ?? [];
+            const preservedTrackCount =
+                type === 'playlist'
+                    ? ((collections[key] as OfflinePlaylist | undefined)?.trackCount ??
+                      preservedSongIds.length)
+                    : undefined;
+            const previousSongIds = new Set(preservedSongIds);
             const currentSongIds = new Set(songIds);
-            removedSongIds = [...previousSongIds].filter((songId) => !currentSongIds.has(songId));
+            removedSongIds = preserveExisting
+                ? []
+                : [...previousSongIds].filter((songId) => !currentSongIds.has(songId));
 
             for (const songId of removedSongIds) {
                 const entryKey = getEntryKey(collection.serverId, songId);
@@ -1088,7 +1114,17 @@ const syncCollection = async (
 
             const nextCollection = {
                 ...collection,
-                songIds,
+                ...(type === 'album' && automatic !== undefined ? { automatic } : {}),
+                ...(type === 'playlist'
+                    ? {
+                          trackCount: preserveExisting
+                              ? Math.max(preservedTrackCount ?? 0, requestedTrackCount)
+                              : requestedTrackCount,
+                      }
+                    : {}),
+                songIds: preserveExisting
+                    ? mergeSongIdsInServerOrder(songIds, preservedSongIds)
+                    : songIds,
                 syncedAt: new Date().toISOString(),
             };
             collections[key] = nextCollection;
@@ -1120,7 +1156,13 @@ const syncCollection = async (
 };
 
 const syncAlbum = async (request: OfflineAlbumSyncRequest): Promise<OfflineAlbumSyncResult> => {
-    const result = await syncCollection('album', request.album, request.tracks, request.silent);
+    const result = await syncCollection(
+        'album',
+        request.album,
+        request.tracks,
+        request.silent,
+        request.preserveExisting,
+    );
     return { ...result, album: result.collection as OfflineAlbum };
 };
 
@@ -1132,6 +1174,7 @@ const syncPlaylist = async (
         request.playlist,
         request.tracks,
         request.silent,
+        request.preserveExisting,
     );
     return { ...result, playlist: result.collection as OfflinePlaylist };
 };

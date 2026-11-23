@@ -90,6 +90,7 @@ export const OfflineDownloadManager = () => {
         try {
             if (task.itemType === 'album' && task.itemIds[0]) {
                 const response = await getAlbumSongsById({
+                    forceRefresh: true,
                     id: [task.itemIds[0]],
                     queryClient,
                     serverId: task.serverId,
@@ -100,6 +101,7 @@ export const OfflineDownloadManager = () => {
                         name: task.name,
                         serverId: task.serverId,
                     },
+                    preserveExisting: true,
                     tracks: response.items.map((song) => ({
                         song,
                         url: api.controller.getDownloadUrl({
@@ -110,6 +112,7 @@ export const OfflineDownloadManager = () => {
                 });
             } else if (task.itemType === 'playlist' && task.itemIds[0]) {
                 const response = await getPlaylistSongsById({
+                    forceRefresh: true,
                     id: task.itemIds[0],
                     queryClient,
                     serverId: task.serverId,
@@ -120,6 +123,7 @@ export const OfflineDownloadManager = () => {
                         name: task.name,
                         serverId: task.serverId,
                     },
+                    preserveExisting: true,
                     tracks: (response?.items ?? []).map((song) => ({
                         song,
                         url: api.controller.getDownloadUrl({
