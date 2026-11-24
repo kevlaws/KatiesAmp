@@ -100,7 +100,7 @@
         "fast-xml-parser": "^5.8.0",
         "format-duration": "^3.0.2",
         "fuse.js": "^7.4.2",
-        "i18next": "^25.10.10",
+        "i18next": "^26.3.4",
         "icecast-metadata-stats": "^0.1.12",
         "idb-keyval": "^6.2.5",
         "immer": "^10.2.0",
