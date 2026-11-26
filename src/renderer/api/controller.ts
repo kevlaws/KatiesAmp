@@ -112,6 +112,7 @@ const OMITTED_CONTROLLER_LOG_ENDPOINTS = new Set<keyof ControllerEndpoint>([
     'getDownloadUrl',
     'getImageRequest',
     'getImageUrl',
+    'getResourcePdf',
     'getStreamUrl',
 ]);
 
@@ -736,6 +737,28 @@ export const controller = {
                 query: mergeMusicFolderId(args.query, server),
             }),
         );
+    },
+    getResourceDocuments(args) {
+        const server = getServerById(args.apiClientProps.serverId);
+        if (server?.type !== ServerType.JELLYFIN) return Promise.resolve([]);
+        return apiController(
+            'getResourceDocuments',
+            server.type,
+        )({
+            ...args,
+            apiClientProps: { ...args.apiClientProps, server },
+        });
+    },
+    getResourcePdf(args) {
+        const server = getServerById(args.apiClientProps.serverId);
+        if (server?.type !== ServerType.JELLYFIN) throw new Error('Jellyfin login is required');
+        return apiController(
+            'getResourcePdf',
+            server.type,
+        )({
+            ...args,
+            apiClientProps: { ...args.apiClientProps, server },
+        });
     },
     getRoles(args) {
         const server = getServerById(args.apiClientProps.serverId);

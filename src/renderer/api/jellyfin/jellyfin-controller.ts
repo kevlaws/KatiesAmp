@@ -41,6 +41,9 @@ import {
     UploadPlaylistImageResponse,
 } from '/@/shared/types/domain-types';
 import { ServerFeature } from '/@/shared/types/features-types';
+import { MAX_RESOURCE_PDF_BYTES } from '/@/shared/types/resource-document';
+
+const RESOURCE_LIBRARY_NAME = 'music & dj resources';
 
 // Jellyfin can receive the client's play queue with playback reports, which lets
 // server-side consumers (session UI, prefetch plugins) see the upcoming tracks.
@@ -1303,6 +1306,74 @@ export const JellyfinController: InternalControllerEndpoint = {
             startIndex: 0,
             totalRecordCount: res.body.Items.length || 0,
         };
+    },
+    getResourceDocuments: async ({ apiClientProps }) => {
+        const userId = apiClientProps.server?.userId;
+        if (!userId) return [];
+
+        const client = jfApiClient(apiClientProps);
+        const folders = await client.getMusicFolderList({ params: { userId } });
+        if (folders.status !== 200) throw new Error('Could not list Jellyfin libraries');
+
+        const library = folders.body.Items.find(
+            (folder) =>
+                folder.CollectionType === 'books' &&
+                folder.Name.trim().toLowerCase() === RESOURCE_LIBRARY_NAME,
+        );
+        if (!library) return [];
+
+        const response = await client.getResourceDocuments({
+            params: { userId },
+            query: {
+                Fields: 'Path',
+                IncludeItemTypes: 'Book',
+                ParentId: library.Id,
+                Recursive: true,
+            },
+        });
+        // Access can be revoked between the library and item requests.
+        if (response.status === 401 || response.status === 403 || response.status === 404)
+            return [];
+        if (response.status !== 200) throw new Error('Could not list Jellyfin resource documents');
+
+        return response.body.Items.filter((item) => item.Path?.toLowerCase().endsWith('.pdf'))
+            .map((item) => ({ id: item.Id, name: item.Name }))
+            .sort((a, b) => numericSortCollator.compare(a.name, b.name));
+    },
+    getResourcePdf: async ({ apiClientProps, query }) => {
+        const server = apiClientProps.server;
+        const serverUrl = getServerUrl(server);
+        if (!server?.credential || !serverUrl) throw new Error('Jellyfin login is required');
+
+        const response = await fetch(
+            `${serverUrl}/Items/${encodeURIComponent(query.id)}/Download`,
+            {
+                cache: 'no-store',
+                headers: {
+                    Authorization: createAuthHeader().concat(`, Token="${server.credential}"`),
+                },
+                redirect: 'error',
+                signal: AbortSignal.timeout(30_000),
+            },
+        );
+        if (!response.ok || !response.body) {
+            throw new Error(`Jellyfin resource download failed (HTTP ${response.status})`);
+        }
+
+        let bytesRead = 0;
+        const limitedBody = response.body.pipeThrough(
+            new TransformStream<Uint8Array, Uint8Array>({
+                transform(chunk, controller) {
+                    bytesRead += chunk.byteLength;
+                    if (bytesRead > MAX_RESOURCE_PDF_BYTES) {
+                        controller.error(new Error('Resource PDF exceeds the size limit'));
+                        return;
+                    }
+                    controller.enqueue(chunk);
+                },
+            }),
+        );
+        return new Uint8Array(await new Response(limitedBody).arrayBuffer());
     },
     getRoles: async () => [],
     getScanStatus: async (args) => {

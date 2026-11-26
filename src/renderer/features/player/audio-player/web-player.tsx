@@ -940,6 +940,8 @@ export function WebPlayer() {
             playerRef={playerRef}
             playerStatus={localPlayerStatus}
             preservesPitch={preservePitch}
+            songUniqueId1={player1?._uniqueId}
+            songUniqueId2={player2?._uniqueId}
             speed={speed}
             src1={player1Url}
             src2={player2Url}

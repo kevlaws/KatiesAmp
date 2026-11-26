@@ -5,6 +5,7 @@ import './lyrics';
 import './offline';
 import './player';
 import './remote';
+import './resource-pdfs';
 import './settings';
 import './discord-rpc';
 import './tag-editor';

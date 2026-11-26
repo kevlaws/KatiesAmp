@@ -236,6 +236,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             },
         ],
         requests: [],
+        resourceLibrary: null,
         unexpectedRequests: [],
         unsupportedDownloadIds: new Set(),
     };
@@ -332,7 +333,15 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             const searchTerm = getQuery(url, 'SearchTerm')?.toLowerCase();
             let items;
 
-            if (itemTypes?.includes('MusicAlbum')) items = [state.library.album];
+            if (itemTypes === 'Book') {
+                const resourceLibrary = state.resourceLibrary;
+                items =
+                    resourceLibrary && resourceLibrary.id === getQuery(url, 'ParentId')
+                        ? resourceLibrary.documents
+                              .filter((item) => !state.deniedItemIds.has(item.Id))
+                              .map(({ Id, Name, Path }) => ({ Id, Name, Path }))
+                        : [];
+            } else if (itemTypes?.includes('MusicAlbum')) items = [state.library.album];
             else if (itemTypes?.includes('Audio')) items = state.library.songs;
             else if (itemTypes?.includes('Playlist')) items = [state.library.playlist];
             else {
@@ -343,6 +352,15 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                     Name: folder.name,
                     Type: 'CollectionFolder',
                 }));
+                if (state.resourceLibrary) {
+                    items.push({
+                        CollectionType: 'books',
+                        Id: state.resourceLibrary.id,
+                        IsFolder: true,
+                        Name: state.resourceLibrary.name,
+                        Type: 'CollectionFolder',
+                    });
+                }
             }
 
             if (searchTerm) {
@@ -461,6 +479,28 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             pathname.endsWith('/lyrics')
         ) {
             sendJson(response, 200, { Lyrics: [] });
+            return;
+        }
+
+        const resourceDownload =
+            request.method === 'GET' && pathname.match(/^\/items\/([^/]+)\/download$/);
+        const resourceItem =
+            resourceDownload &&
+            state.resourceLibrary?.documents.find((item) => item.Id === resourceDownload[1]);
+        if (resourceItem?.bytes) {
+            if (
+                !request.headers.authorization?.includes('Token="automation-access-token"') ||
+                state.deniedItemIds.has(resourceItem.Id)
+            ) {
+                sendJson(response, 403, { error: 'Resource download not permitted' });
+                return;
+            }
+            response.writeHead(200, {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Length': resourceItem.bytes.length,
+                'Content-Type': 'application/pdf',
+            });
+            response.end(resourceItem.bytes);
             return;
         }
 

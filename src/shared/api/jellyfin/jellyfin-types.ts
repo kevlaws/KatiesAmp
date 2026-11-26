@@ -419,6 +419,23 @@ const musicFolderList = z.object({
     Items: z.array(musicFolder),
 });
 
+const resourceDocumentsParameters = z.object({
+    Fields: z.literal('Path'),
+    IncludeItemTypes: z.literal('Book'),
+    ParentId: z.string(),
+    Recursive: z.literal(true),
+});
+
+const resourceDocuments = z.object({
+    Items: z.array(
+        z.object({
+            Id: z.string(),
+            Name: z.string(),
+            Path: z.string().nullish(),
+        }),
+    ),
+});
+
 const playlist = z.object({
     BackdropImageTags: z.array(z.string()),
     ChannelId: z.null(),
@@ -936,6 +953,7 @@ export const jfType = {
         playlistList: playlistListParameters,
         quickConnectAuthenticate: quickConnectAuthenticateParameters,
         removeFromPlaylist: removeFromPlaylistParameters,
+        resourceDocuments: resourceDocumentsParameters,
         saveQueue: saveQueueParameters,
         scrobble: scrobbleParameters,
         search: searchParameters,
@@ -974,6 +992,7 @@ export const jfType = {
         playlistSongList,
         quickConnectResult,
         removeFromPlaylist,
+        resourceDocuments,
         scheduledTasks,
         scrobble,
         search,

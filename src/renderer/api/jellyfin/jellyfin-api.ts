@@ -207,6 +207,15 @@ export const contract = c.router({
             400: jfType._response.error,
         },
     },
+    getResourceDocuments: {
+        method: 'GET',
+        path: 'users/:userId/items',
+        query: jfType._parameters.resourceDocuments,
+        responses: {
+            200: jfType._response.resourceDocuments,
+            400: jfType._response.error,
+        },
+    },
     getScheduledTasks: {
         method: 'GET',
         path: 'ScheduledTasks',

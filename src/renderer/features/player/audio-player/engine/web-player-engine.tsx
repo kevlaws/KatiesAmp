@@ -1,7 +1,14 @@
 import type { RefObject } from 'react';
 import type ReactPlayer from 'react-player';
 
-import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useImperativeHandle,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from 'react';
 
 import { AudioPlayer, PlayerOnProgressProps } from '/@/renderer/features/player/audio-player/types';
 import {
@@ -40,6 +47,8 @@ interface WebPlayerEngineProps {
     playerRef: RefObject<null | WebPlayerEngineHandle>;
     playerStatus: PlayerStatus;
     preservesPitch: boolean;
+    songUniqueId1?: string;
+    songUniqueId2?: string;
     speed?: number;
     src1: string | undefined;
     src2: string | undefined;
@@ -48,6 +57,38 @@ interface WebPlayerEngineProps {
 
 const MAX_NETWORK_RETRIES = 5;
 const NETWORK_RETRY_DELAY_MS = 2000;
+const OFFLINE_PROTOCOL = 'feishin-offline:';
+
+const subscribeToWebPlaybackSource = (notify: () => void) => {
+    const events = ['emptied', 'error', 'loadedmetadata'];
+    const onSourceChange = (event: Event) => {
+        if (event.target instanceof HTMLAudioElement) notify();
+    };
+    // Media loading events do not bubble. The player elements can mount after the panel.
+    events.forEach((event) => document.addEventListener(event, onSourceChange, true));
+    return () =>
+        events.forEach((event) => document.removeEventListener(event, onSourceChange, true));
+};
+
+export const useWebPlaybackSource = (playerNum: number, songUniqueId: string | undefined) =>
+    useSyncExternalStore(subscribeToWebPlaybackSource, () => {
+        if (!songUniqueId) return null;
+        const player = document.getElementById(`web-player-${playerNum}`);
+        if (player?.dataset.songUniqueId !== songUniqueId) return null;
+
+        const audio = player.querySelector('audio');
+        if (
+            !audio ||
+            audio.error ||
+            audio.readyState < HTMLMediaElement.HAVE_METADATA ||
+            audio.currentSrc !== audio.src
+        ) {
+            return null;
+        }
+        if (audio.currentSrc.startsWith(OFFLINE_PROTOCOL)) return 'offline';
+        if (/^https?:/.test(audio.currentSrc)) return 'server';
+        return null;
+    });
 
 // Store volume is 0-100; clamp the normalized result so HTMLMediaElement.volume
 // never receives a value outside [0, 1] (throws IndexSizeError in some engines)
@@ -82,6 +123,8 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
         playerRef,
         playerStatus,
         preservesPitch,
+        songUniqueId1,
+        songUniqueId2,
         speed,
         src1,
         src2,
@@ -239,7 +282,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
 
             if (
                 isNetworkError &&
-                source?.startsWith('feishin-offline:') &&
+                source?.startsWith(OFFLINE_PROTOCOL) &&
                 !offlineRecoveryAttemptedRef.current
             ) {
                 offlineRecoveryAttemptedRef.current = true;
@@ -410,6 +453,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                     file: { attributes: { crossOrigin: 'anonymous' }, forceAudio: true },
                 }}
                 controls={false}
+                data-song-unique-id={songUniqueId1}
                 height={0}
                 id="web-player-1"
                 loop={loopPlayer1}
@@ -440,6 +484,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                     file: { attributes: { crossOrigin: 'anonymous' }, forceAudio: true },
                 }}
                 controls={false}
+                data-song-unique-id={songUniqueId2}
                 height={0}
                 id="web-player-2"
                 loop={loopPlayer2}

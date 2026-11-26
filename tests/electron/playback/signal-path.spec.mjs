@@ -8,6 +8,20 @@ const openSignalPath = async (page) => {
     return page.getByTestId('signal-path-popout');
 };
 
+const downloadTrack = async (page, song) => {
+    await song.click({ button: 'right' });
+    await page.getByText('Download for offline use', { exact: true }).click();
+    await expect
+        .poll(() =>
+            page.evaluate(() =>
+                window.api.offline
+                    .list()
+                    .then((entries) => entries.some((entry) => entry.song.id === 'song-1')),
+            ),
+        )
+        .toBe(true);
+};
+
 test('@full opens the compact signal path pop-out and reports only known playback telemetry', async ({
     page,
 }) => {
@@ -69,23 +83,13 @@ test('@full opens the compact signal path pop-out and reports only known playbac
     // Downloading the current song does not replace the source already loaded
     // by the player. Mere offline availability must not be presented as active
     // offline playback or as a known decoded source rate.
-    await song.click({ button: 'right' });
-    await page.getByText('Download for offline use', { exact: true }).click();
-    await expect
-        .poll(() =>
-            page.evaluate(() =>
-                window.api.offline
-                    .list()
-                    .then((entries) => entries.some((entry) => entry.song.id === 'song-1')),
-            ),
-        )
-        .toBe(true);
+    await downloadTrack(page, song);
 
     const offlineAvailableSignalPath = await openSignalPath(page);
     const offlineSourceStage = offlineAvailableSignalPath
         .getByText('Source', { exact: true })
         .locator('..');
-    await expect(offlineSourceStage).toContainText('Playback source not reported');
+    await expect(offlineSourceStage.getByText('Server stream', { exact: true })).toBeVisible();
     await expect(offlineSourceStage).toContainText('Offline copy available');
 
     const offlineResamplerStage = offlineAvailableSignalPath
@@ -93,4 +97,35 @@ test('@full opens the compact signal path pop-out and reports only known playbac
         .locator('..');
     await expect(offlineResamplerStage).toContainText('Unavailable');
     await expect(offlineResamplerStage).toContainText('Decoded source rate is not reported');
+});
+
+test('@full reports the loaded offline copy and updates when playback falls back to streaming', async ({
+    mockJellyfin,
+    page,
+}) => {
+    await login(page);
+    await navigateTo(page, '/library/songs');
+    const song = getSongCell(page, 'Automation Track 1');
+    await downloadTrack(page, song);
+
+    mockJellyfin.setAvailable(false);
+    await song.dblclick();
+
+    const signalPath = await openSignalPath(page);
+    const sourceStage = signalPath.getByText('Source', { exact: true }).locator('..');
+    await expect(signalPath).toContainText('Automation Track 1');
+    await expect(sourceStage.getByText('Offline copy', { exact: true })).toBeVisible();
+    await expect(sourceStage).not.toContainText('Offline copy available');
+
+    mockJellyfin.setAvailable(true);
+    await page.locator('#web-player-engine audio[src^="feishin-offline:"]').evaluate((audio) => {
+        // Force a failed local read through Electron's real offline protocol.
+        const missingSource = new URL(audio.currentSrc);
+        missingSource.searchParams.set('songId', 'missing-offline-fixture');
+        audio.src = missingSource.href;
+    });
+
+    await expect(sourceStage.getByText('Server stream', { exact: true })).toBeVisible();
+    await expect(sourceStage).toContainText('Offline copy available');
+    await expect(signalPath).toContainText('Automation Track 1');
 });

@@ -585,6 +585,10 @@
         },
         "signalPath": {
             "noTrack": "Play a track to see its live signal path.",
+            "offlineCopy": "Offline copy",
+            "offlineCopyAvailable": "Offline copy available",
+            "serverStream": "Server stream",
+            "sourceNotReported": "Playback source not reported",
             "title": "Signal path"
         },
         "manageServers": {
@@ -793,6 +797,8 @@
             "myLibrary": "My Library",
             "nowPlaying": "Now Playing",
             "playlists": "Playlists",
+            "resourceOpenError": "Could not open the PDF. Check the connection and your Jellyfin download access.",
+            "resources": "Music & DJ Resources",
             "search": "Search",
             "settings": "Settings",
             "shared": "Shared Playlists",

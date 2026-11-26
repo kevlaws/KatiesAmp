@@ -1,0 +1,42 @@
+.section {
+    margin-top: var(--theme-spacing-xs);
+    border-top: 1px solid var(--theme-colors-border);
+}
+
+.title {
+    margin: var(--theme-spacing-md) var(--theme-spacing-md) var(--theme-spacing-xs);
+    font-size: var(--theme-font-size-md);
+    font-weight: 600;
+    color: var(--theme-colors-foreground);
+}
+
+.button {
+    width: 100%;
+    padding-inline: var(--theme-spacing-md);
+    font-size: var(--theme-font-size-md);
+    font-weight: 500;
+    color: var(--theme-colors-foreground);
+}
+
+.inner,
+.label {
+    width: 100%;
+    min-width: 0;
+}
+
+.label {
+    gap: var(--theme-spacing-md);
+}
+
+.name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: start;
+}
+
+.icon,
+.open-icon {
+    flex: 0 0 1rem;
+}

@@ -17,6 +17,7 @@ import { SidebarAlbumList } from '/@/renderer/features/sidebar/components/sideba
 import { SidebarCollectionList } from '/@/renderer/features/sidebar/components/sidebar-collection-list';
 import { SidebarIcon } from '/@/renderer/features/sidebar/components/sidebar-icon';
 import { SidebarItem } from '/@/renderer/features/sidebar/components/sidebar-item';
+import { SidebarResourceDocuments } from '/@/renderer/features/sidebar/components/sidebar-resource-documents';
 import {
     useAppStore,
     useAppStoreActions,
@@ -114,7 +115,6 @@ export const Sidebar = () => {
                         content: styles.accordionContent,
                         control: styles.accordionControl,
                         item: styles.accordionItem,
-                        root: styles.accordionRoot,
                     }}
                     defaultValue={['library', 'collections', 'albums']}
                     multiple
@@ -147,6 +147,7 @@ export const Sidebar = () => {
                     <SidebarCollectionList />
                     <SidebarAlbumList />
                 </Accordion>
+                <SidebarResourceDocuments />
             </ScrollArea>
             <AnimatePresence initial={false} mode="popLayout">
                 {showImage && <SidebarImage />}

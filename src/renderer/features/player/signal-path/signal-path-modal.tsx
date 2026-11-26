@@ -1,5 +1,4 @@
 import { t as translate } from 'i18next';
-import isElectron from 'is-electron';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -14,6 +13,8 @@ import {
     linearGainToDecibels,
 } from './signal-path-utils';
 
+import { useOfflineItemStatus } from '/@/renderer/features/offline/offline-download.store';
+import { useWebPlaybackSource } from '/@/renderer/features/player/audio-player/engine/web-player-engine';
 import {
     supportsAudioSinkSelection,
     toAudioSinkId,
@@ -34,9 +35,8 @@ import {
 } from '/@/renderer/store';
 import { useMpvLoudnessTelemetry } from '/@/renderer/store/loudness-telemetry.store';
 import { type AppIconSelection, Icon } from '/@/shared/components/icon/icon';
+import { LibraryItem } from '/@/shared/types/domain-types';
 import { PlayerStatus, PlayerStyle, PlayerType } from '/@/shared/types/types';
-
-type OfflineSourceState = 'checking' | 'local' | 'none' | 'server';
 
 type SignalStageProps = {
     detail?: string;
@@ -76,46 +76,16 @@ const SignalPathPanelContent = () => {
     const { crossfadeDuration, crossfadeStyle, playerNum, status, transitionType } =
         usePlayerProperties();
     const { webAudio } = useWebAudio();
-    const [offlineSource, setOfflineSource] = useState<OfflineSourceState>('none');
+    const webPlaybackSource = useWebPlaybackSource(
+        playerNum,
+        playbackType === PlayerType.WEB ? song?._uniqueId : undefined,
+    );
+    const offlineStatus = useOfflineItemStatus(song ?? { id: '' }, LibraryItem.SONG);
+    const offlineCopyAvailable =
+        (playbackType === PlayerType.LOCAL || playbackType === PlayerType.WEB) &&
+        offlineStatus.downloaded > 0;
     const [limiterReduction, setLimiterReduction] = useState<null | number>(null);
     const [webTrackGainDB, setWebTrackGainDB] = useState<null | number>(null);
-    const songId = song?.id;
-    const songServerId = song?._serverId;
-
-    useEffect(() => {
-        let cancelled = false;
-
-        if (!songId || !songServerId) {
-            setOfflineSource('none');
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        if (
-            !isElectron() ||
-            (playbackType !== PlayerType.LOCAL && playbackType !== PlayerType.WEB)
-        ) {
-            setOfflineSource('server');
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        setOfflineSource('checking');
-        void window.api.offline
-            .resolve(songServerId, songId)
-            .then((source) => {
-                if (!cancelled) setOfflineSource(source ? 'local' : 'server');
-            })
-            .catch(() => {
-                if (!cancelled) setOfflineSource('server');
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [playbackType, songId, songServerId]);
 
     const limiterEnabled = shouldEnableOutputLimiter(
         playback.volumeLevelingMode,
@@ -181,18 +151,27 @@ const SignalPathPanelContent = () => {
               .filter(Boolean)
               .join(' · ')
         : null;
+    const playbackSource =
+        playbackType === PlayerType.WEB
+            ? webPlaybackSource
+            : offlineCopyAvailable
+              ? null
+              : 'server';
     const sourceValue =
-        offlineSource === 'local'
-            ? 'Playback source not reported'
-            : offlineSource === 'checking'
-              ? 'Checking local source…'
-              : 'Server stream';
+        playbackSource === 'offline'
+            ? t('page.signalPath.offlineCopy')
+            : playbackSource === 'server'
+              ? t('page.signalPath.serverStream')
+              : t('page.signalPath.sourceNotReported');
+    const libraryDetails = `library source ${librarySourceFormat} · ${librarySourceDetails}`;
+    const formatDetail =
+        playbackSource === 'offline'
+            ? libraryDetails
+            : `Received format is not reported · ${transcodeTarget ? `configured target ${transcodeTarget}` : libraryDetails}`;
     const sourceDetails =
-        offlineSource === 'local'
-            ? `Offline copy available · library source ${librarySourceFormat} · ${librarySourceDetails}`
-            : transcodeTarget
-              ? `Received format is not reported · configured target ${transcodeTarget}`
-              : `Received format is not reported · library source ${librarySourceFormat} · ${librarySourceDetails}`;
+        offlineCopyAvailable && playbackSource !== 'offline'
+            ? `${t('page.signalPath.offlineCopyAvailable')} · ${formatDetail}`
+            : formatDetail;
     const levellingProfile =
         playback.volumeLevelingMode === VOLUME_LEVELING_MODE.OFF
             ? 'Off'
@@ -339,6 +318,7 @@ const SignalPathPanelContent = () => {
                     detail={sourceDetails}
                     icon="track"
                     label="Source"
+                    unavailable={!playbackSource}
                     value={sourceValue}
                 />
                 <SignalStage
