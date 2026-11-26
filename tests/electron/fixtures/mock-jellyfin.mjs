@@ -224,6 +224,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
     const state = {
         audioDelayMs: 0,
         available: true,
+        cacheDownloads: false,
         corruptDownloadIds: new Set(),
         deniedItemIds: new Set(),
         failedDownloadIds: new Set(),
@@ -536,6 +537,9 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
             } else if (pathname.endsWith('/download') && state.unsupportedDownloadIds.has(songId)) {
                 responseAudio = Buffer.alloc(audio.length);
                 Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0, 0, 0]).copy(responseAudio);
+            }
+            if (state.cacheDownloads && pathname.endsWith('/download')) {
+                response.setHeader('Cache-Control', 'private, max-age=86400');
             }
             await sendAudio(request, response, responseAudio, state.audioDelayMs, contentType);
             return;

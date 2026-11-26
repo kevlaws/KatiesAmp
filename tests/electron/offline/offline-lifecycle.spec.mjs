@@ -373,6 +373,44 @@ test('@nightly plays a downloaded track after the server becomes unavailable', a
         .toBe(true);
 });
 
+test('@smoke refreshes revised offline audio at the same URL while the app stays open', async ({
+    mockJellyfin,
+    page,
+}) => {
+    mockJellyfin.state.cacheDownloads = true;
+    await login(page);
+    await downloadAlbum(page);
+    await expect
+        .poll(() =>
+            page.evaluate(async () => (await window.api.offline.listAlbums())[0]?.songIds.length),
+        )
+        .toBe(6);
+
+    const source = await resolveOfflineSong(page, 'song-1');
+    const original = await fs.readFile(source.filePath);
+    mockJellyfin.setSongDuration('song-1', 7);
+    mockJellyfin.updateSong('song-1', { NormalizationGain: -2.5 });
+    const response = await fetch(`${mockJellyfin.url}/Items/song-1/Download`);
+    expect(response.ok).toBe(true);
+    const revised = Buffer.from(await response.arrayBuffer());
+    expect(original.equals(revised)).toBe(false);
+
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect
+        .poll(
+            () =>
+                page.evaluate(async () => {
+                    const entries = await window.api.offline.list();
+                    return entries.find((entry) => entry.song.id === 'song-1')?.song.gain?.track;
+                }),
+            { timeout: 20_000 },
+        )
+        .toBe(-2.5);
+    mockJellyfin.setAvailable(false);
+    const offline = await resolveOfflineSong(page, 'song-1');
+    expect((await fs.readFile(offline.filePath)).equals(revised)).toBe(true);
+});
+
 test('@nightly treats an unchanged managed album sync as a no-op', async ({ page }) => {
     await login(page);
     await downloadAlbum(page);

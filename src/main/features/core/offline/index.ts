@@ -682,7 +682,8 @@ const download = async (
         }
 
         await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-        const response = await net.fetch(request.url, { signal });
+        // Servers can replace the audio at a stable URL between library syncs.
+        const response = await net.fetch(request.url, { cache: 'no-store', signal });
         if (!response.ok || !response.body) {
             throw new Error(`Download failed with HTTP ${response.status}`);
         }
