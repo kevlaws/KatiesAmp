@@ -8,10 +8,10 @@ test('@full lists shared resource PDFs and opens the latest copy without interru
     page,
 }) => {
     const guide = {
+        bytes: Buffer.from('%PDF-1.7\n% Revision 1\n'),
         Id: 'resource-music-guide',
         Name: 'Venue Music Guide',
         Path: '/resources/Venue Music Guide.PDF',
-        bytes: Buffer.from('%PDF-1.7\n% Revision 1\n'),
     };
     mockJellyfin.state.resourceLibrary = {
         documents: [
@@ -37,7 +37,7 @@ test('@full lists shared resource PDFs and opens the latest copy without interru
 
     await login(page);
     const sidebar = page.locator('#left-sidebar');
-    const album = sidebar.getByRole('link', { name: 'Automation Album', exact: true });
+    const album = sidebar.getByRole('link', { exact: true, name: 'Automation Album' });
     const resources = sidebar.getByRole('region', { name: 'Music & DJ Resources' });
     const openGuide = resources.getByRole('button', { name: guide.Name });
     await expect(openGuide).toBeInViewport();

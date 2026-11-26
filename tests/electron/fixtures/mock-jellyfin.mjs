@@ -339,7 +339,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                     resourceLibrary && resourceLibrary.id === getQuery(url, 'ParentId')
                         ? resourceLibrary.documents
                               .filter((item) => !state.deniedItemIds.has(item.Id))
-                              .map(({ bytes: _bytes, ...item }) => item)
+                              .map(({ Id, Name, Path }) => ({ Id, Name, Path }))
                         : [];
             } else if (itemTypes?.includes('MusicAlbum')) items = [state.library.album];
             else if (itemTypes?.includes('Audio')) items = state.library.songs;
