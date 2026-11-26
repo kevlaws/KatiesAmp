@@ -347,6 +347,10 @@ export const queryKeys: Record<
         list: (serverId: string) => [serverId, 'radio', 'list'] as const,
         root: (serverId: string) => [serverId, 'radio'] as const,
     },
+    resourceDocuments: {
+        list: (serverId: string, userId?: null | string) =>
+            [serverId, 'resourceDocuments', 'list', userId] as const,
+    },
     roles: {
         list: (serverId: string) => [serverId, 'roles'] as const,
     },

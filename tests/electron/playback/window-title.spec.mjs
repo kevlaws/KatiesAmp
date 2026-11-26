@@ -17,7 +17,7 @@ test('@full identifies the current playback and logged-in venue in the window ti
     await expect(song).toBeVisible({ timeout: 15_000 });
     await song.dblclick();
 
-    const playingTitle = `(1 / 6) Automation Artist - Automation Track 1 - KatiesAmp v${packageVersion} - Admin`;
+    const playingTitle = `Automation Artist - Automation Track 1 - KatiesAmp v${packageVersion} - Admin`;
     await expect.poll(() => page.title()).toBe(playingTitle);
     expect(playingTitle).not.toContain('Automation Album');
 

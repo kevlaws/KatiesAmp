@@ -18,6 +18,7 @@ import {
     NDUserListSort,
 } from '/@/shared/api/navidrome/navidrome-types';
 import { ServerFeatures } from '/@/shared/types/features-types';
+import { ResourceDocument } from '/@/shared/types/resource-document';
 import { PlayerStatus } from '/@/shared/types/types';
 
 export enum LibraryItem {
@@ -1648,6 +1649,8 @@ export type ControllerEndpoint = {
     getPlaylistSongList: (args: PlaylistSongListArgs) => Promise<SongListResponse>;
     getPlayQueue: (args: GetQueueArgs) => Promise<GetQueueResponse>;
     getRandomSongList: (args: RandomSongListArgs) => Promise<SongListResponse>;
+    getResourceDocuments: (args: BaseEndpointArgs) => Promise<ResourceDocument[]>;
+    getResourcePdf: (args: ResourcePdfArgs) => Promise<Uint8Array>;
     getRoles: (args: BaseEndpointArgs) => Promise<Array<string | { label: string; value: string }>>;
     getScanStatus: (args: GetScanStatusArgs) => Promise<GetScanStatusResponse>;
     getServerInfo: (args: ServerInfoArgs) => Promise<ServerInfo>;
@@ -1813,6 +1816,10 @@ export type InternalControllerEndpoint = {
     getRandomSongList: (
         args: ReplaceApiClientProps<RandomSongListArgs>,
     ) => Promise<SongListResponse>;
+    getResourceDocuments?: (
+        args: ReplaceApiClientProps<BaseEndpointArgs>,
+    ) => Promise<ResourceDocument[]>;
+    getResourcePdf?: (args: ReplaceApiClientProps<ResourcePdfArgs>) => Promise<Uint8Array>;
     getRoles: (
         args: ReplaceApiClientProps<BaseEndpointArgs>,
     ) => Promise<Array<string | { label: string; value: string }>>;
@@ -1946,6 +1953,8 @@ export type MoveItemQuery = {
 };
 
 export type ReplaceApiClientProps<T> = BaseEndpointArgsWithServer & Omit<T, 'apiClientProps'>;
+
+export type ResourcePdfArgs = BaseEndpointArgs & { query: { id: string } };
 
 export type SaveQueueArgs = BaseEndpointArgs & {
     query: SaveQueueQuery;

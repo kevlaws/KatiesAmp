@@ -15,6 +15,9 @@ const openItem = async (path: string) => {
     return ipcRenderer.invoke('open-item', path);
 };
 
+const openResourcePdf = (bytes: Uint8Array, name: string): Promise<void> =>
+    ipcRenderer.invoke('open-resource-pdf', bytes, name);
+
 const cancelReadSongMetadata = (): void => {
     ipcRenderer.invoke('cancel-read-song-metadata');
 };
@@ -216,6 +219,7 @@ export const utils = {
     openCustomCssFolder,
     openItem,
     openLogsFolder,
+    openResourcePdf,
     playerErrorListener,
     readLocalImage,
     readSongMetadataBatch,
