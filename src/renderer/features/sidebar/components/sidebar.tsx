@@ -17,7 +17,7 @@ import { SidebarAlbumList } from '/@/renderer/features/sidebar/components/sideba
 import { SidebarCollectionList } from '/@/renderer/features/sidebar/components/sidebar-collection-list';
 import { SidebarIcon } from '/@/renderer/features/sidebar/components/sidebar-icon';
 import { SidebarItem } from '/@/renderer/features/sidebar/components/sidebar-item';
-import { SidebarResourceDocuments } from '/@/renderer/features/sidebar/components/sidebar-resource-documents';
+import { SidebarVenueLists } from '/@/renderer/features/sidebar/components/sidebar-venue-lists';
 import {
     useAppStore,
     useAppStoreActions,
@@ -46,7 +46,7 @@ import { useImageHashUrl } from '/@/shared/hooks/use-image-hash-url';
 import { ExplicitStatus, LibraryItem } from '/@/shared/types/domain-types';
 import { Platform } from '/@/shared/types/types';
 
-export const Sidebar = () => {
+export const Sidebar = ({ showVenueLists }: { showVenueLists: boolean }) => {
     const { t } = useTranslation();
 
     const translatedSidebarItemMap = useMemo(
@@ -59,6 +59,7 @@ export const Sidebar = () => {
             Folders: t('page.sidebar.folders'),
             Genres: t('page.sidebar.genres'),
             Home: t('page.sidebar.home'),
+            'Live music': t('page.liveMusic.nav'),
             'Now Playing': t('page.sidebar.nowPlaying'),
             Playlists: t('page.sidebar.playlists'),
             Radio: t('page.sidebar.radio'),
@@ -147,7 +148,7 @@ export const Sidebar = () => {
                     <SidebarCollectionList />
                     <SidebarAlbumList />
                 </Accordion>
-                <SidebarResourceDocuments />
+                {showVenueLists && <SidebarVenueLists />}
             </ScrollArea>
             <AnimatePresence initial={false} mode="popLayout">
                 {showImage && <SidebarImage />}

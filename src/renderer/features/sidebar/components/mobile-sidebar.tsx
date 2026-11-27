@@ -13,6 +13,7 @@ import {
     SidebarSharedPlaylistList,
     useSidebarPlaylistAddDragMonitor,
 } from '/@/renderer/features/sidebar/components/sidebar-playlist-list';
+import { SidebarVenueLists } from '/@/renderer/features/sidebar/components/sidebar-venue-lists';
 import {
     SidebarItemType,
     useSidebarItems,
@@ -46,6 +47,7 @@ export const MobileSidebar = () => {
             Favorites: t('page.sidebar.favorites'),
             Genres: t('page.sidebar.genres'),
             Home: t('page.sidebar.home'),
+            'Live music': t('page.liveMusic.nav'),
             'Now Playing': t('page.sidebar.nowPlaying'),
             Playlists: t('page.sidebar.playlists'),
             Search: t('page.sidebar.search'),
@@ -115,6 +117,7 @@ export const MobileSidebar = () => {
                     </Accordion.Item>
                     {sidebarPlaylistList && <MobileSidebarPlaylistSection />}
                 </Accordion>
+                <SidebarVenueLists />
             </ScrollArea>
         </div>
     );

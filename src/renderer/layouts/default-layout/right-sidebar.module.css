@@ -22,3 +22,16 @@
 .queue-drawer {
     border-radius: var(--theme-radius-lg);
 }
+
+.right-sidebar-container > :global(#sidebar-play-queue-container) {
+    flex: 1;
+    min-height: 0;
+}
+
+.venue-lists {
+    flex: 0 1 auto;
+    max-height: 45%;
+    padding-inline: var(--theme-spacing-md);
+    overflow-y: auto;
+    border-top: 1px solid var(--theme-colors-border);
+}

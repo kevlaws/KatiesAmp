@@ -784,7 +784,21 @@
             "logger": "Logger",
             "playerFilters": "Player Filters"
         },
+        "liveMusic": {
+            "artist": "Artist",
+            "choose": "Choose venue",
+            "empty": "No live music listed for this day.",
+            "loading": "Loading lineup…",
+            "nav": "Live music",
+            "refresh": "Refresh lineup",
+            "saved": "Couldn’t refresh. Showing the saved lineup.",
+            "start": "Start time",
+            "today": "Today’s live music",
+            "unavailable": "The lineup is unavailable. Try refreshing.",
+            "unmapped": "No GigPig venue is linked to this account."
+        },
         "sidebar": {
+
             "albumArtists": "Album Artists",
             "albums": "Albums",
             "collections": "Collections",

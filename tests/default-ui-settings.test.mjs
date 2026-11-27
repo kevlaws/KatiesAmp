@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    addLiveMusicSidebarItem,
     KATIESAMP_DEFAULT_UI_SETTINGS,
     KATIESAMP_SIDEBAR_MIGRATION_VERSION,
     migrateKatiesAmpSidebarSettings,
@@ -12,6 +13,7 @@ test('clean installs use the captured KatiesAmp navigation content', () => {
         'Home',
         'Tracks',
         'Artists-all',
+        'Live music',
         'Settings',
     ]);
 });
@@ -25,6 +27,22 @@ const sidebarState = (enabledIds) => ({
             }),
         ),
     },
+});
+
+test('upgrading adds Live music before Settings once and preserves customised navigation', () => {
+    const original = [
+        { disabled: true, id: 'Artists' },
+        { disabled: false, id: 'Settings' },
+        { disabled: false, id: 'Home' },
+    ];
+    const items = [...original];
+    const entry = { disabled: false, id: 'Live music', route: '/live-music' };
+    addLiveMusicSidebarItem(items, entry);
+    addLiveMusicSidebarItem(items, entry);
+    assert.deepEqual(items, [original[0], entry, original[1], original[2]]);
+    const minimal = [original[0]];
+    addLiveMusicSidebarItem(minimal, entry);
+    assert.deepEqual(minimal, [original[0], entry]);
 });
 
 test('v1.2.0 sidebar defaults migrate without Albums', () => {

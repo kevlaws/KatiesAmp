@@ -229,6 +229,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         deniedItemIds: new Set(),
         failedDownloadIds: new Set(),
         interruptedDownloadIds: new Set(),
+        isAdmin: true,
         library: createLibrary(songCount),
         musicFolders: [
             {
@@ -240,6 +241,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         resourceLibrary: null,
         unexpectedRequests: [],
         unsupportedDownloadIds: new Set(),
+        username: 'Admin',
     };
     state.playlistSongIds = state.library.songs.map((song) => song.Id);
     const audioFixtures = [
@@ -280,7 +282,7 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
 
         if (request.method === 'POST' && pathname === '/users/authenticatebyname') {
             const body = await readJson(request);
-            if (body.Username !== 'Admin' || body.Pw !== 'password') {
+            if (body.Username !== state.username || body.Pw !== 'password') {
                 sendJson(response, 401, { error: 'Invalid username or password' });
                 return;
             }
@@ -291,8 +293,8 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
                 SessionInfo: { Id: 'mock-session' },
                 User: {
                     Id: 'test-user',
-                    Name: 'Admin',
-                    Policy: { IsAdministrator: true },
+                    Name: state.username,
+                    Policy: { IsAdministrator: state.isAdmin },
                 },
             });
             return;
@@ -322,8 +324,8 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         if (request.method === 'GET' && pathname === '/users/test-user') {
             sendJson(response, 200, {
                 Id: 'test-user',
-                Name: 'Admin',
-                Policy: { IsAdministrator: true },
+                Name: state.username,
+                Policy: { IsAdministrator: state.isAdmin },
             });
             return;
         }

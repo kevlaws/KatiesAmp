@@ -43,6 +43,7 @@ const NoNetworkRoute = lazy(
 );
 
 const HomeRoute = lazy(() => import('/@/renderer/features/home/routes/home-route'));
+const LiveMusicRoute = lazy(() => import('/@/renderer/features/live-music/live-music'));
 
 const ArtistListRoute = lazy(() => import('/@/renderer/features/artists/routes/artist-list-route'));
 
@@ -223,6 +224,10 @@ export const AppRouter = () => {
                                     <Route element={<ResponsiveLayout />}>
                                         <Route element={<HomeRoute />} index />
                                         <Route element={<HomeRoute />} path={AppRoute.HOME} />
+                                        <Route
+                                            element={<LiveMusicRoute />}
+                                            path={AppRoute.LIVE_MUSIC}
+                                        />
                                         <Route element={<SearchRoute />} path={AppRoute.SEARCH} />
                                         <Route
                                             element={<FavoritesRoute />}

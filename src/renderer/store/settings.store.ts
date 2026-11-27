@@ -36,8 +36,10 @@ import {
 import { audiomotionanalyzerPresets } from '/@/renderer/features/visualizer/components/audiomotionanalyzer/presets';
 import { AppRoute } from '/@/renderer/router/routes';
 import {
+    addLiveMusicSidebarItem,
     KATIESAMP_DEFAULT_UI_SETTINGS,
     KATIESAMP_SIDEBAR_MIGRATION_VERSION,
+    LIVE_MUSIC_SIDEBAR_VERSION,
     migrateKatiesAmpSidebarSettings,
 } from '/@/renderer/store/default-ui-settings';
 import { getEnvSettingsOverrides } from '/@/renderer/store/env-settings-overrides';
@@ -1051,6 +1053,7 @@ export enum SidebarItem {
     FOLDERS = 'Folders',
     GENRES = 'Genres',
     HOME = 'Home',
+    LIVE_MUSIC = 'Live music',
     NOW_PLAYING = 'Now Playing',
     PLAYLISTS = 'Playlists',
     RADIO = 'Radio',
@@ -1243,6 +1246,12 @@ export const sidebarItems: SidebarItemType[] = [
         id: 'Artists-all',
         label: i18n.t('page.sidebar.artists'),
         route: AppRoute.LIBRARY_ARTISTS,
+    },
+    {
+        disabled: !defaultSidebarEnabledItems.has('Live music'),
+        id: SidebarItem.LIVE_MUSIC,
+        label: i18n.t('page.liveMusic.nav'),
+        route: AppRoute.LIVE_MUSIC,
     },
     {
         disabled: !defaultSidebarEnabledItems.has('Genres'),
@@ -2954,11 +2963,18 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
 
                 migrateVolumeLevelingSettings(state, version);
                 migrateKatiesAmpSidebarSettings(state, version);
+                if (version < LIVE_MUSIC_SIDEBAR_VERSION && state.general?.sidebarItems) {
+                    addLiveMusicSidebarItem(
+                        state.general.sidebarItems,
+                        sidebarItems.find((item) => item.id === SidebarItem.LIVE_MUSIC)!,
+                    );
+                }
 
                 return persistedState;
             },
             name: 'store_settings',
             version: Math.max(
+                LIVE_MUSIC_SIDEBAR_VERSION,
                 AUTOMATIC_ALBUM_DOWNLOAD_SETTINGS_MIGRATION_VERSION,
                 VOLUME_LEVELING_MIGRATION_VERSION,
                 KATIESAMP_SIDEBAR_MIGRATION_VERSION,

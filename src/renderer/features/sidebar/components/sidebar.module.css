@@ -82,3 +82,7 @@
 .accordion-content:last-child {
     padding-bottom: var(--theme-spacing-md);
 }
+
+.venue-chevron:not([data-rotate]) {
+    transform: rotate(90deg);
+}

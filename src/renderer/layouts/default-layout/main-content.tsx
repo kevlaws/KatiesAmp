@@ -210,7 +210,11 @@ export const MainContent = ({ shell }: { shell?: boolean }) => {
                 <>
                     <FullScreenVisualizerOverlay />
                     <FullScreenOverlay />
-                    <LeftSidebar isResizing={isResizing} startResizing={startResizing} />
+                    <LeftSidebar
+                        isResizing={isResizing}
+                        showVenueLists={!rightSidebarVisible || sideQueueLayout === 'vertical'}
+                        startResizing={startResizing}
+                    />
                     <RightSidebar
                         isResizing={isResizingRight}
                         ref={rightSidebarRef}
