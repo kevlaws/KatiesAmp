@@ -8,7 +8,7 @@ test('release notes add a funny title without replacing the generated change lis
 
     assert.match(releaseNotes.title, /^KatiesAmp v1\.6\.0: /);
     assert.match(releaseNotes.notes, /^## /);
-    assert.match(releaseNotes.notes, /proper release notes/);
+    assert.equal(releaseNotes.notes.split('\n\n').length, 2);
 });
 
 test('beta and hotfix releases use the matching release personality', () => {
@@ -28,7 +28,7 @@ test('a curated release title and introduction override the automatic joke', () 
             version: '1.6.0',
         }),
         {
-            notes: '## Permission to Rock\n\nThe hand-picked introduction.\n\nThe important bits are below, because even a good joke should come with proper release notes.',
+            notes: '## Permission to Rock\n\nThe hand-picked introduction.',
             title: 'KatiesAmp v1.6.0: Permission to Rock',
         },
     );

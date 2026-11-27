@@ -85,7 +85,7 @@ export const generateReleaseNotes = ({ channel, customIntro = '', customTitle = 
     const intro = customIntro.trim() || personality.intro;
 
     return {
-        notes: `## ${subtitle}\n\n${intro}\n\nThe important bits are below, because even a good joke should come with proper release notes.`,
+        notes: `## ${subtitle}\n\n${intro}`,
         title: `KatiesAmp v${version}: ${subtitle}`,
     };
 };
