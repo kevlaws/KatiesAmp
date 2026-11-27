@@ -103,6 +103,8 @@ test('@full reports the loaded offline copy and updates when playback falls back
     mockJellyfin,
     page,
 }) => {
+    mockJellyfin.setMp3AudioIds(['song-1'], 0.5);
+    mockJellyfin.state.library.songs[0].NormalizationGain = -7.8;
     await login(page);
     await navigateTo(page, '/library/songs');
     const song = getSongCell(page, 'Automation Track 1');
@@ -116,7 +118,12 @@ test('@full reports the loaded offline copy and updates when playback falls back
     await expect(signalPath).toContainText('Automation Track 1');
     await expect(sourceStage.getByText('Offline copy', { exact: true })).toBeVisible();
     await expect(sourceStage).not.toContainText('Offline copy available');
+    const levellingStage = signalPath.getByText('Volume levelling', { exact: true }).locator('..');
+    await expect(levellingStage).toContainText('Natural · +0.5 dB');
+    await expect(levellingStage).toContainText('embedded track tag');
 
+    // A different file revision now streams from the same URL. Zero is a valid tag.
+    mockJellyfin.setMp3AudioIds(['song-1'], 0);
     mockJellyfin.setAvailable(true);
     await page.locator('#web-player-engine audio[src^="feishin-offline:"]').evaluate((audio) => {
         // Force a failed local read through Electron's real offline protocol.
@@ -127,5 +134,6 @@ test('@full reports the loaded offline copy and updates when playback falls back
 
     await expect(sourceStage.getByText('Server stream', { exact: true })).toBeVisible();
     await expect(sourceStage).toContainText('Offline copy available');
+    await expect(levellingStage).toContainText('Natural · +0.0 dB');
     await expect(signalPath).toContainText('Automation Track 1');
 });

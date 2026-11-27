@@ -13,8 +13,9 @@ import {
 } from '/@/renderer/features/player/audio-player/engine/web-player-engine';
 import { usePlayerEvents } from '/@/renderer/features/player/audio-player/hooks/use-player-events';
 import {
-    getSongUrl,
-    useSongUrl,
+    getSongSource,
+    type SongSource,
+    useSongSource,
 } from '/@/renderer/features/player/audio-player/hooks/use-stream-url';
 import { PlayerOnProgressProps } from '/@/renderer/features/player/audio-player/types';
 import {
@@ -738,12 +739,34 @@ export function WebPlayer() {
         setLocalPlayerStatus(PlayerStatus.PLAYING);
     }, [status, localPlayerStatus, volume]);
 
+    const resolvedPlayer1 = useSongSource(player1, num === 1, transcode);
+    const resolvedPlayer2 = useSongSource(player2, num === 2, transcode);
+    const [player1Fallback, setPlayer1Fallback] = useState<null | {
+        songUniqueId: string;
+        source: SongSource;
+    }>(null);
+    const [player2Fallback, setPlayer2Fallback] = useState<null | {
+        songUniqueId: string;
+        source: SongSource;
+    }>(null);
+    const source1 =
+        player1Fallback && player1Fallback.songUniqueId === player1?._uniqueId
+            ? player1Fallback.source
+            : resolvedPlayer1;
+    const source2 =
+        player2Fallback && player2Fallback.songUniqueId === player2?._uniqueId
+            ? player2Fallback.source
+            : resolvedPlayer2;
+
+    const player1Url = source1?.url;
+    const player2Url = source2?.url;
+
     const calculateReplayGain = useCallback(
-        (song: QueueSong): number => {
+        (song: QueueSong, source: SongSource): number => {
             return calculateReplayGainMultiplier({
                 clip: playback.replayGainClip,
                 fallbackDB: playback.replayGainFallbackDB,
-                gainInfo: song.gain,
+                gainInfo: { ...song.gain, track: source.trackGainDB ?? song.gain?.track },
                 mode: getReplayGainMode(volumeLevelingMode),
                 peakInfo: song.peak,
                 preampDB: playback.replayGainPreampDB,
@@ -758,9 +781,9 @@ export function WebPlayer() {
     );
 
     useEffect(() => {
-        if (!webAudio || !player1 || !player1Source) return;
+        if (!webAudio || !player1 || !player1Source || !source1?.url) return;
 
-        const newGain = calculateReplayGain(player1);
+        const newGain = calculateReplayGain(player1, source1);
 
         // Apply per player slot whenever its song/source is ready so pre-started
         // inactive players have correct gain before gapless/crossfade transitions.
@@ -772,12 +795,12 @@ export function WebPlayer() {
         } catch (error) {
             console.error('Error setting gain', error);
         }
-    }, [calculateReplayGain, player1, player1Source, webAudio]);
+    }, [calculateReplayGain, player1, player1Source, source1, webAudio]);
 
     useEffect(() => {
-        if (!webAudio || !player2 || !player2Source) return;
+        if (!webAudio || !player2 || !player2Source || !source2?.url) return;
 
-        const newGain = calculateReplayGain(player2);
+        const newGain = calculateReplayGain(player2, source2);
 
         try {
             webAudio.gains[1].gain.setValueAtTime(
@@ -787,34 +810,18 @@ export function WebPlayer() {
         } catch (error) {
             console.error('Error setting gain', error);
         }
-    }, [calculateReplayGain, player2, player2Source, webAudio]);
-
-    const resolvedPlayer1Url = useSongUrl(player1, num === 1, transcode);
-    const resolvedPlayer2Url = useSongUrl(player2, num === 2, transcode);
-    const [player1Fallback, setPlayer1Fallback] = useState<null | {
-        songUniqueId: string;
-        url: string;
-    }>(null);
-    const [player2Fallback, setPlayer2Fallback] = useState<null | {
-        songUniqueId: string;
-        url: string;
-    }>(null);
-    const player1Url =
-        player1Fallback && player1Fallback.songUniqueId === player1?._uniqueId
-            ? player1Fallback.url
-            : resolvedPlayer1Url;
-    const player2Url =
-        player2Fallback && player2Fallback.songUniqueId === player2?._uniqueId
-            ? player2Fallback.url
-            : resolvedPlayer2Url;
+    }, [calculateReplayGain, player2, player2Source, source2, webAudio]);
 
     const recoverOfflineSource = useCallback(
         async (song: QueueSong | undefined, position: number, slot: 1 | 2) => {
             if (!song) return false;
 
             try {
-                const url = await getSongUrl(song, transcode, false, true, undefined, false);
-                if (!url) return false;
+                const source = await getSongSource(song, transcode, {
+                    allowOffline: false,
+                    forRenderer: true,
+                });
+                if (!source.url) return false;
 
                 const resumePosition =
                     slot === num
@@ -823,10 +830,10 @@ export function WebPlayer() {
 
                 if (slot === 1) {
                     pendingRecoverySeek1Ref.current = resumePosition;
-                    setPlayer1Fallback({ songUniqueId: song._uniqueId, url });
+                    setPlayer1Fallback({ songUniqueId: song._uniqueId, source });
                 } else {
                     pendingRecoverySeek2Ref.current = resumePosition;
-                    setPlayer2Fallback({ songUniqueId: song._uniqueId, url });
+                    setPlayer2Fallback({ songUniqueId: song._uniqueId, source });
                 }
                 return true;
             } catch (error) {
@@ -945,6 +952,8 @@ export function WebPlayer() {
             speed={speed}
             src1={player1Url}
             src2={player2Url}
+            trackGainDB1={source1?.trackGainDB}
+            trackGainDB2={source2?.trackGainDB}
             volume={volume}
         />
     );

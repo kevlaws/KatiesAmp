@@ -336,9 +336,8 @@ export type MpvTrackAudioConfiguration = {
 
 /**
  * Builds the complete, file-local MPV audio configuration for one queue entry.
- * Jellyfin's NormalizationGain/LUFS is authoritative when present. Embedded
- * ReplayGain remains a safe fallback only for files for which the server did
- * not provide a usable gain value.
+ * Prefer the resolved file gain. MPV can read ReplayGain itself if the
+ * application could resolve neither file nor catalogue gain.
  */
 export const buildMpvTrackAudioConfiguration = ({
     clip,
