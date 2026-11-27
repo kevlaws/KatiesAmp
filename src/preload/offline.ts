@@ -52,8 +52,12 @@ const listAlbums = (): Promise<OfflineAlbum[]> => ipcRenderer.invoke('offline-al
 const remove = (serverId: string, songId: string): Promise<boolean> =>
     ipcRenderer.invoke('offline-remove', serverId, songId);
 
-const resolve = (serverId: string, songId: string): Promise<null | OfflinePlaybackSource> =>
-    ipcRenderer.invoke('offline-resolve', serverId, songId);
+const resolve = (
+    serverId: string,
+    songId: string,
+    readTrackGain = false,
+): Promise<null | OfflinePlaybackSource> =>
+    ipcRenderer.invoke('offline-resolve', serverId, songId, readTrackGain);
 
 const selectStorageDirectory = (): Promise<null | string> =>
     ipcRenderer.invoke('offline-storage-select');

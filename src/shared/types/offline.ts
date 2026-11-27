@@ -75,6 +75,7 @@ export type OfflineEntry = {
 
 export type OfflinePlaybackSource = {
     filePath: string;
+    trackGainDB?: number;
     url: string;
 };
 

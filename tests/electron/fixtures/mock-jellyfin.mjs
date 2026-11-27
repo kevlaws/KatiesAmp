@@ -613,12 +613,19 @@ export const startMockJellyfin = async ({ songCount = 6 } = {}) => {
         setInterruptedDownloadIds: (ids) => {
             state.interruptedDownloadIds = new Set(ids);
         },
-        setMp3AudioIds: (ids) => {
+        setMp3AudioIds: (ids, trackGain) => {
             for (const id of ids) {
                 const song = state.library.songs.find((item) => item.Id === id);
                 if (!song) throw new Error(`Unknown mock song ${id}`);
 
-                const audio = makeMp3(12);
+                let audio = makeMp3(12);
+                if (trackGain !== undefined) {
+                    const text = Buffer.from(`\0REPLAYGAIN_TRACK_GAIN\0${trackGain} dB`);
+                    const header = Buffer.from('ID3\x03\0\0\0\0\0\0TXXX\0\0\0\0\0\0', 'latin1');
+                    header[9] = text.length + 10; // Short ID3v2.3 tag (single syncsafe byte).
+                    header.writeUInt32BE(text.length, 14);
+                    audio = Buffer.concat([header, text, audio]);
+                }
                 audioBySongId.set(id, audio);
                 audioContentTypeBySongId.set(id, 'audio/mpeg');
                 song.Container = 'mp3';

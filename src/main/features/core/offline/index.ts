@@ -616,6 +616,7 @@ const readManifestSnapshot = (): Promise<OfflineManifest> => {
 export const resolveOfflineSource = async (
     serverId: string,
     songId: string,
+    readTrackGain = false,
 ): Promise<null | OfflinePlaybackSource> => {
     const manifest = await readManifest();
     const entry = manifest.entries[getEntryKey(serverId, songId)];
@@ -628,7 +629,18 @@ export const resolveOfflineSource = async (
     url.searchParams.set('serverId', serverId);
     url.searchParams.set('songId', songId);
 
-    return { filePath: validFile.filePath, url: url.toString() };
+    let trackGainDB: number | undefined;
+    if (readTrackGain) {
+        try {
+            const { common } = await parseFile(validFile.filePath, { skipCovers: true });
+            if (Number.isFinite(common.replaygain_track_gain?.dB)) {
+                trackGainDB = common.replaygain_track_gain?.dB;
+            }
+        } catch {
+            // An unreadable tag still allows playback with the catalogue gain.
+        }
+    }
+    return { filePath: validFile.filePath, trackGainDB, url: url.toString() };
 };
 
 const download = async (
@@ -1248,6 +1260,8 @@ ipcMain.handle('offline-playlist-sync', (_event, request: OfflinePlaylistSyncReq
 ipcMain.handle('offline-remove', (_event, serverId: string, songId: string) =>
     remove(serverId, songId),
 );
-ipcMain.handle('offline-resolve', (_event, serverId: string, songId: string) =>
-    resolveOfflineSource(serverId, songId),
+ipcMain.handle(
+    'offline-resolve',
+    (_event, serverId: string, songId: string, readTrackGain?: boolean) =>
+        resolveOfflineSource(serverId, songId, readTrackGain),
 );

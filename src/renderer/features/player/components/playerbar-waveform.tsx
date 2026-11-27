@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CustomPlayerbarSlider } from './playerbar-slider';
 import styles from './playerbar-waveform.module.css';
 
-import { useSongUrl } from '/@/renderer/features/player/audio-player/hooks/use-stream-url';
+import { useSongSource } from '/@/renderer/features/player/audio-player/hooks/use-stream-url';
 import { PlayerbarSeekSlider } from '/@/renderer/features/player/components/playerbar-seek-slider';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
 import {
@@ -44,11 +44,16 @@ export const PlayerbarWaveform = () => {
     const songDuration = currentSong?.duration ? currentSong.duration / 1000 : 0;
 
     const { transcode } = usePlaybackSettings();
-    const streamUrl = useSongUrl(currentSong, true, {
-        bitrate: 64,
-        enabled: transcode.enabled,
-        format: 'mp3',
-    });
+    const streamUrl = useSongSource(
+        currentSong,
+        true,
+        {
+            bitrate: 64,
+            enabled: transcode.enabled,
+            format: 'mp3',
+        },
+        false,
+    )?.url;
 
     const { color } = useAppThemeColors();
     const primaryColor = (color['--theme-colors-primary'] as string) || 'rgb(53, 116, 252)';

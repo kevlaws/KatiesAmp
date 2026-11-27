@@ -86,6 +86,7 @@ const SignalPathPanelContent = () => {
         offlineStatus.downloaded > 0;
     const [limiterReduction, setLimiterReduction] = useState<null | number>(null);
     const [webTrackGainDB, setWebTrackGainDB] = useState<null | number>(null);
+    const [fileTrackGainDB, setFileTrackGainDB] = useState<number | undefined>();
 
     const limiterEnabled = shouldEnableOutputLimiter(
         playback.volumeLevelingMode,
@@ -105,23 +106,30 @@ const SignalPathPanelContent = () => {
                 reduction !== undefined && Number.isFinite(reduction) ? reduction : null,
             );
             setWebTrackGainDB(multiplier !== undefined ? linearGainToDecibels(multiplier) : null);
+            const slot = document.getElementById(`web-player-${playerNum}`);
+            const tag =
+                webPlaybackSource && slot?.dataset.songUniqueId === song?._uniqueId
+                    ? slot?.dataset.trackGainDb
+                    : undefined;
+            setFileTrackGainDB(tag === undefined ? undefined : Number(tag));
         };
         readLiveTelemetry();
         const interval = window.setInterval(readLiveTelemetry, 500);
         return () => window.clearInterval(interval);
-    }, [limiterEnabled, playbackType, playerNum, webAudio]);
+    }, [limiterEnabled, playbackType, playerNum, song?._uniqueId, webAudio, webPlaybackSource]);
 
     const gainAdjustment = useMemo(() => {
         if (!song) return null;
         return resolveReplayGainAdjustment({
             clip: playback.mpvProperties.replayGainClip,
             fallbackDB: playback.mpvProperties.replayGainFallbackDB,
-            gainInfo: song.gain,
+            gainInfo: { ...song.gain, track: fileTrackGainDB ?? song.gain?.track },
             mode: getReplayGainMode(playback.volumeLevelingMode),
             peakInfo: song.peak,
             preampDB: playback.mpvProperties.replayGainPreampDB,
         });
     }, [
+        fileTrackGainDB,
         playback.mpvProperties.replayGainClip,
         playback.mpvProperties.replayGainFallbackDB,
         playback.mpvProperties.replayGainPreampDB,
@@ -188,7 +196,9 @@ const SignalPathPanelContent = () => {
         playbackType === PlayerType.LOCAL ? currentMpvTelemetry?.adjustment : gainAdjustment;
     const gainSourceLabel =
         liveAdjustment?.source === 'track'
-            ? 'track metadata'
+            ? fileTrackGainDB !== undefined && playbackType === PlayerType.WEB
+                ? 'embedded track tag'
+                : 'track metadata'
             : liveAdjustment?.source === 'album'
               ? 'album metadata'
               : liveAdjustment?.source === 'fallback'

@@ -52,6 +52,8 @@ interface WebPlayerEngineProps {
     speed?: number;
     src1: string | undefined;
     src2: string | undefined;
+    trackGainDB1?: number;
+    trackGainDB2?: number;
     volume: number;
 }
 
@@ -128,6 +130,8 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
         speed,
         src1,
         src2,
+        trackGainDB1,
+        trackGainDB2,
         volume,
     } = props;
 
@@ -454,6 +458,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                 }}
                 controls={false}
                 data-song-unique-id={songUniqueId1}
+                data-track-gain-db={trackGainDB1}
                 height={0}
                 id="web-player-1"
                 loop={loopPlayer1}
@@ -485,6 +490,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                 }}
                 controls={false}
                 data-song-unique-id={songUniqueId2}
+                data-track-gain-db={trackGainDB2}
                 height={0}
                 id="web-player-2"
                 loop={loopPlayer2}
