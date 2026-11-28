@@ -77,10 +77,17 @@ export const KATIESAMP_DEFAULT_UI_SETTINGS = {
             enabledColumns: ['rowIndex', 'titleCombined', 'duration', 'album'],
         },
     },
-    sidebarEnabledItems: ['Home', 'Tracks', 'Artists-all', 'Settings'],
+    sidebarEnabledItems: ['Home', 'Tracks', 'Artists-all', 'Live music', 'Settings'],
 } as const;
 
 export const KATIESAMP_SIDEBAR_MIGRATION_VERSION = 38;
+export const LIVE_MUSIC_SIDEBAR_VERSION = 40;
+
+export function addLiveMusicSidebarItem<T extends { id: string }>(items: T[], liveMusic: T) {
+    if (items.some((item) => item.id === liveMusic.id)) return;
+    const settings = items.findIndex((item) => item.id === 'Settings');
+    items.splice(settings < 0 ? items.length : settings, 0, { ...liveMusic });
+}
 
 const V1_2_0_SIDEBAR_ENABLED_ITEMS = [
     'Home',

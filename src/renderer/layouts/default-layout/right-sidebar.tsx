@@ -8,6 +8,7 @@ import {
     useSidebarPanels,
 } from '/@/renderer/features/now-playing/components/sidebar-play-queue';
 import { ResizeHandle } from '/@/renderer/features/shared/components/resize-handle';
+import { SidebarVenueLists } from '/@/renderer/features/sidebar/components/sidebar-venue-lists';
 import { useAppStore, useSideQueueLayout, useSideQueueType } from '/@/renderer/store';
 
 // const queueDrawerVariants: Variants = {
@@ -87,6 +88,11 @@ export const RightSidebar = forwardRef(
                             ref={ref}
                         />
                         <SidebarPlayQueue />
+                        {!isVerticalLayout && (
+                            <div className={styles.venueLists}>
+                                <SidebarVenueLists />
+                            </div>
+                        )}
                     </aside>
                 )}
             </>

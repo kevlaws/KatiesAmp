@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
 import { useAppTracker } from '/@/renderer/features/analytics/hooks/use-app-tracker';
+import { LiveMusicProvider } from '/@/renderer/features/live-music/live-music-context';
 import { CommandPalette } from '/@/renderer/features/search/components/command-palette';
 import { useGarbageCollection } from '/@/renderer/hooks/use-garbage-collection';
 import { HotkeyItem, useHotkeys } from '/@/renderer/hooks/use-hotkeys';
@@ -36,7 +37,13 @@ export const ResponsiveLayout = ({ shell }: ResponsiveLayoutProps) => {
 
     return (
         <>
-            <ResponsiveLayoutBase shell={shell} />
+            {shell ? (
+                <ResponsiveLayoutBase shell />
+            ) : (
+                <LiveMusicProvider>
+                    <ResponsiveLayoutBase />
+                </LiveMusicProvider>
+            )}
             <LayoutHotkeys />
             <GarbageCollection />
         </>

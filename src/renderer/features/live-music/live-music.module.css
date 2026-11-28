@@ -1,0 +1,85 @@
+.full,
+.compact {
+    display: grid;
+    gap: var(--theme-spacing-md);
+    min-width: 0;
+}
+
+.full {
+    max-width: 70rem;
+    padding: clamp(1rem, 4vw, 3.5rem);
+    margin-inline: auto;
+}
+
+.full h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3vw, 2.75rem);
+}
+
+.compact {
+    gap: var(--theme-spacing-xs);
+    padding-inline: var(--theme-spacing-md);
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--theme-spacing-xs);
+    align-items: center;
+    justify-content: space-between;
+    color: var(--theme-colors-foreground-muted);
+}
+
+.full table,
+.compact table {
+    width: 100%;
+    text-align: start;
+    border-collapse: collapse;
+}
+
+.full th,
+.full td {
+    padding: var(--theme-spacing-md) var(--theme-spacing-xs);
+    text-align: start;
+    border-bottom: 1px solid var(--theme-colors-border);
+}
+
+.full th {
+    font-size: var(--theme-font-size-sm);
+    text-transform: uppercase;
+}
+
+.compact td {
+    padding-block: 2px;
+}
+
+.compact td:first-child,
+.full td:first-child {
+    width: 1%;
+    padding-inline-end: var(--theme-spacing-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--theme-colors-primary);
+    white-space: nowrap;
+}
+
+.full td:first-child {
+    width: 20%;
+}
+
+.compact td:last-child,
+.full td:last-child {
+    overflow-wrap: anywhere;
+}
+
+.compact [role='status']:empty,
+.full [role='status']:empty {
+    display: none;
+}
+
+.screen-reader-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}

@@ -19,10 +19,11 @@ const Sidebar = lazy(() =>
 
 interface LeftSidebarProps {
     isResizing: boolean;
+    showVenueLists: boolean;
     startResizing: (direction: 'left' | 'right', mouseEvent?: MouseEvent) => void;
 }
 
-export const LeftSidebar = ({ isResizing, startResizing }: LeftSidebarProps) => {
+export const LeftSidebar = ({ isResizing, showVenueLists, startResizing }: LeftSidebarProps) => {
     const sidebarRef = useRef<HTMLDivElement | null>(null);
     const collapsed = useAppStore((state) => state.sidebar.collapsed);
 
@@ -37,7 +38,9 @@ export const LeftSidebar = ({ isResizing, startResizing }: LeftSidebarProps) => 
                 placement="right"
                 ref={sidebarRef}
             />
-            <Suspense fallback={<></>}>{collapsed ? <CollapsedSidebar /> : <Sidebar />}</Suspense>
+            <Suspense fallback={<></>}>
+                {collapsed ? <CollapsedSidebar /> : <Sidebar showVenueLists={showVenueLists} />}
+            </Suspense>
         </aside>
     );
 };

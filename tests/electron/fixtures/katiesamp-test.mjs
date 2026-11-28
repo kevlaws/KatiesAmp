@@ -71,12 +71,18 @@ export const test = base.extend({
 
         await use(electronApp);
 
-        await electronApp
-            .evaluate(({ app }) => {
-                app.exit(0);
-            })
-            .catch(() => {});
-        await electronApp.close().catch(() => {});
+        // On Windows the main process can wait for its debugger after its windows close.
+        const child = electronApp.process();
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const exited = new Promise((resolve) => child.once('exit', resolve));
+        const closeTimeout = setTimeout(() => {
+            if (child.exitCode === null && child.signalCode === null) child.kill();
+        }, 5_000);
+        try {
+            await Promise.race([electronApp.close(), exited]);
+        } finally {
+            clearTimeout(closeTimeout);
+        }
     },
     launchDurationMs: async ({ electronApp }, use) => {
         await use(electronApp.katiesAmpLaunchDurationMs);

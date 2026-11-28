@@ -6,6 +6,7 @@ import styles from './sidebar-resource-documents.module.css';
 
 import { api } from '/@/renderer/api';
 import { resourceDocumentsQuery } from '/@/renderer/features/sidebar/api/resource-documents-api';
+import { SidebarSection } from '/@/renderer/features/sidebar/components/sidebar-section';
 import { useAuthStore, useCurrentServer } from '/@/renderer/store';
 import { logger } from '/@/renderer/utils/logger';
 import { Button } from '/@/shared/components/button/button';
@@ -61,10 +62,7 @@ const ResourceDocumentList = ({
     if (!documents?.length) return null;
 
     return (
-        <section aria-labelledby="sidebar-resource-title" className={styles.section}>
-            <h2 className={styles.title} id="sidebar-resource-title">
-                {t('page.sidebar.resources')}
-            </h2>
+        <SidebarSection id="resources" title={t('page.sidebar.resources')}>
             {documents.map((document) => (
                 <Button
                     className={styles.button}
@@ -86,6 +84,6 @@ const ResourceDocumentList = ({
                     />
                 </Button>
             ))}
-        </section>
+        </SidebarSection>
     );
 };

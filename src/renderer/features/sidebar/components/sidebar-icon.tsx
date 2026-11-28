@@ -29,6 +29,7 @@ import { generatePath, useLocation } from 'react-router';
 import styles from './sidebar-icon.module.css';
 
 import { AppRoute } from '/@/renderer/router/routes';
+import { Icon } from '/@/shared/components/icon/icon';
 import { LibraryItem } from '/@/shared/types/domain-types';
 
 interface SidebarIconProps {
@@ -63,6 +64,8 @@ export const SidebarIcon = ({ active, route, size }: SidebarIconProps) => {
             case AppRoute.LIBRARY_SONGS:
                 if (isActive) return <RiMusic2Fill size={size} />;
                 return <RiMusic2Line size={size} />;
+            case AppRoute.LIVE_MUSIC:
+                return <Icon icon="microphone" size={size ?? '1rem'} />;
             case AppRoute.NOW_PLAYING:
                 if (isActive) return <RiPlayFill size={size} />;
                 return <RiPlayLine size={size} />;
